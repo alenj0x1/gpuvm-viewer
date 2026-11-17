@@ -173,6 +173,14 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         raiseAllKeys();
         break;
 
+    case KeyComboGpuVMHome:
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Detected GpuVM home combo");
+        GpuVM::Bridge::instance().allowAppForeground();
+        GpuVM::Bridge::instance().send("home");
+        raiseAllKeys();
+        break;
+
     case KeyComboToggleKeyboardGrab:
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                     "Detected keyboard grab toggle combo");

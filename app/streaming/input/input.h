@@ -169,6 +169,7 @@ private:
         KeyComboQuitAndExit,
         KeyComboToggleKeyboardGrab,
         KeyComboGpuVMPanel, // GpuVM: open or close the side panel
+        KeyComboGpuVMHome, // GpuVM: back to the app's Home (the machine stays connected)
         KeyComboMax
     };
 
