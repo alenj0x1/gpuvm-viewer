@@ -2494,14 +2494,16 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
             SetWindowLongPtrW(info.info.win.window, GWLP_HWNDPARENT, (LONG_PTR)app);
         }
 #endif
-        SDL_ShowWindow(m_Window);
-        SDL_RaiseWindow(m_Window);
+        // A machine set to full screen goes full screen before it comes out from behind the app, so the picture
+        // never shows inside the app for a frame first.
         bool isFull = SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
         if (type == "reveal" && command->value("fullscreen").toBool() && !isFull) {
             toggleFullscreen();
             isFull = true;
             GpuVM::reportWindow(m_Window, true);
         }
+        SDL_ShowWindow(m_Window);
+        SDL_RaiseWindow(m_Window);
         if (isFull || m_Preferences->absoluteMouseMode) {
             m_InputHandler->setCaptureActive(true);
         }
