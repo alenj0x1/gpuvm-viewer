@@ -12,6 +12,9 @@ float s_To = 0.0f;
 Uint32 s_Start = 0;
 int s_Duration = 0;
 
+void (*s_RedrawListener)(void*) = nullptr;
+void* s_RedrawContext = nullptr;
+
 float clampFraction(float f)
 {
     if (!(f >= 0.0f)) return 0.0f;  // also NaN
@@ -33,6 +36,13 @@ float currentLocked(Uint32 now)
     return s_From + (s_To - s_From) * easeOut(t);
 }
 
+void cut(SDL_Rect* window, float inset)
+{
+    if (inset > 0.0f) {
+        window->w -= (int)std::lround(window->w * inset);
+    }
+}
+
 }
 
 void Viewport::setRightInset(float fraction, int durationMs)
@@ -43,7 +53,14 @@ void Viewport::setRightInset(float fraction, int durationMs)
     s_To = clampFraction(fraction);
     s_Start = now;
     s_Duration = durationMs < 0 ? 0 : (durationMs > 1000 ? 1000 : durationMs);
+    void (*listener)(void*) = s_RedrawListener;
+    void* context = s_RedrawContext;
     SDL_AtomicUnlock(&s_Lock);
+
+    // Registered and removed on this same thread, so it is still alive here.
+    if (listener != nullptr) {
+        listener(context);
+    }
 }
 
 void Viewport::apply(SDL_Rect* window)
@@ -51,10 +68,15 @@ void Viewport::apply(SDL_Rect* window)
     SDL_AtomicLock(&s_Lock);
     float inset = currentLocked(SDL_GetTicks());
     SDL_AtomicUnlock(&s_Lock);
-    if (inset > 0.0f) {
-        int cut = (int)std::lround(window->w * inset);
-        window->w -= cut;
-    }
+    cut(window, inset);
+}
+
+void Viewport::applyTarget(SDL_Rect* window)
+{
+    SDL_AtomicLock(&s_Lock);
+    float inset = s_To;
+    SDL_AtomicUnlock(&s_Lock);
+    cut(window, inset);
 }
 
 unsigned Viewport::generation()
@@ -72,6 +94,24 @@ bool Viewport::animating()
     bool moving = s_Duration > 0 && (SDL_GetTicks() - s_Start) < (Uint32)s_Duration;
     SDL_AtomicUnlock(&s_Lock);
     return moving;
+}
+
+void Viewport::setRedrawListener(void (*listener)(void*), void* context)
+{
+    SDL_AtomicLock(&s_Lock);
+    s_RedrawListener = listener;
+    s_RedrawContext = context;
+    SDL_AtomicUnlock(&s_Lock);
+}
+
+void Viewport::clearRedrawListener(void* context)
+{
+    SDL_AtomicLock(&s_Lock);
+    if (s_RedrawContext == context) {
+        s_RedrawListener = nullptr;
+        s_RedrawContext = nullptr;
+    }
+    SDL_AtomicUnlock(&s_Lock);
 }
 
 }

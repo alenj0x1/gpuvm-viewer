@@ -2,6 +2,7 @@
 
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
+#include "gpuvm/viewport.h"
 
 // Implementation in plvk_c.c
 #define PL_LIBAV_IMPLEMENTATION 0
@@ -1062,6 +1063,7 @@ void PlVkRenderer::renderFrame(AVFrame *frame)
     dst.h = targetFrame.crop.y1 - targetFrame.crop.y0;
 
     // Scale the video to the surface size while preserving the aspect ratio
+    GpuVM::Viewport::apply(&dst);
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
     targetFrame.crop.x0 = dst.x;

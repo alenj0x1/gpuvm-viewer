@@ -13,11 +13,14 @@ GpuVM's own code lives in `app/gpuvm/`; upstream files only call it, a few lines
 | `app/gpuvm/bridge.*` | The private pipe to the GpuVM app (client side, token from the environment, fixed message list). |
 | `app/gpuvm/viewport.*` | The picture's area: the side panel takes the right part of the window and the picture slides aside. |
 | `app/gpuvm/sessionhooks.*` | Stages, errors, window, first picture and stats sent to the app. |
-| `app/main.cpp` | Own settings and pairing identity (`HKCU\Software\GpuVM\Viewer`), bridge start, hidden Qt window. |
+| `app/main.cpp`, `app/path.*` | Own settings and pairing identity, logs and caches, all under `%USERPROFILE%\AppData\LocalLow\GpuVM\Viewer` when GpuVM runs it (it streams at Low integrity); bridge start and stop; hidden Qt window. |
 | `app/streaming/session.*` | Bridge hooks, commands from the app, window title. |
 | `app/streaming/input/*` | Ctrl+Alt+Shift+G opens the panel; mouse and touch follow the picture's area. |
-| `app/streaming/video/*` | First picture and stats; the picture's area; graphite around the picture. |
-| `app/gui/main.qml` | Hidden window when GpuVM drives the viewer; no Moonlight update check. |
+| `app/streaming/video/*` | First picture presented and stats; the picture's area in every Windows renderer, redrawn while it moves; graphite around the picture. |
+| `app/gui/main.qml`, `app/gui/StreamSegue.qml` | Hidden window and no dialogs when GpuVM drives the viewer; no Moonlight update check. |
+
+When GpuVM runs it, the viewer's exit code is 0 after a normal end (or a quit the app asked for) and 1 after an
+error; its last message is `ended` with `reason` `closed` or `error`.
 | `app/moonlight.ico`, `app/res/moonlight.svg` | GpuVM's icon. |
 
 ## Build (Windows)

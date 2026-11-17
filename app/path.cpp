@@ -126,3 +126,12 @@ void Path::initialize(bool portable)
         s_QmlCacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/qmlcache";
     }
 }
+
+void Path::initializeIn(const QString& directory)
+{
+    s_LogDir = directory + "/logs";
+    s_CacheDir = directory + "/cache";
+    s_BoxArtCacheDir = directory + "/cache/boxart";
+    s_QmlCacheDir = directory + "/cache/qmlcache";
+    QDir().mkpath(s_LogDir);
+}

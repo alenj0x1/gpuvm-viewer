@@ -55,6 +55,7 @@
 #include "settings/streamingpreferences.h"
 #include "gui/sdlgamepadkeynavigation.h"
 #include "gpuvm/bridge.h"
+#include "gpuvm/sessionhooks.h"
 #include <QJsonObject>
 #include <QTimer>
 
@@ -441,7 +442,12 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
+    if (GpuVM::Bridge::instance().quiet()) {
+        // GpuVM (stream and pair): settings, pairing identity, caches and logs under LocalLow\GpuVM\Viewer, the
+        // one place the viewer can write when GpuVM runs it at Low integrity. Before any QSettings exists.
+        GpuVM::Bridge::prepareStorage();
+    }
+    else if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QDir::currentPath());
         QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, QDir::currentPath());
@@ -1016,18 +1022,21 @@ int main(int argc, char *argv[])
             auto launcher   = new CliStartStream::Launcher(host, appName, preferences, &app);
             engine.rootContext()->setContextProperty("launcher", launcher);
             if (GpuVM::Bridge::instance().enabled()) {
-                QObject::connect(launcher, &CliStartStream::Launcher::failed, [](QString message) {
+                // stop() sends what's queued before the pipe closes, so "ended" reaches the app.
+                QObject::connect(launcher, &CliStartStream::Launcher::failed, &app, [](QString message) {
                     QJsonObject f;
                     f["message"] = message;
                     GpuVM::Bridge::instance().send("error", f);
+                    GpuVM::reportEnded("error");
                     GpuVM::Bridge::instance().stop();
-                    QTimer::singleShot(200, qApp, [] { QCoreApplication::exit(1); });
+                    QCoreApplication::exit(1);
                 });
                 // Upstream asks before closing another app running on the host; the dialog is hidden here.
-                QObject::connect(launcher, &CliStartStream::Launcher::appQuitRequired, [](QString) {
+                QObject::connect(launcher, &CliStartStream::Launcher::appQuitRequired, &app, [](QString) {
                     GpuVM::Bridge::instance().send("app-running");
+                    GpuVM::reportEnded("error");
                     GpuVM::Bridge::instance().stop();
-                    QTimer::singleShot(200, qApp, [] { QCoreApplication::exit(1); });
+                    QCoreApplication::exit(1);
                 });
             }
             break;
@@ -1078,6 +1087,9 @@ int main(int argc, char *argv[])
     }
 
     int err = app.exec();
+
+    // GpuVM: whatever ended the event loop, the pipe threads are done before the process goes away.
+    GpuVM::Bridge::instance().stop();
 
     // Give worker tasks time to properly exit. Fixes PendingQuitTask
     // sometimes freezing and blocking process exit.

@@ -51,6 +51,11 @@ Item {
 
     function quitStarting()
     {
+        // GpuVM: the window stays hidden; the app shows the progress
+        if (gpuvmHidden) {
+            return
+        }
+
         // Avoid the push transition animation
         var component = Qt.createComponent("QuitSegue.qml")
         stackView.replace(stackView.currentItem, component.createObject(stackView, {"appName": appName}), StackView.Immediate)
@@ -67,6 +72,12 @@ Item {
 
         // Re-enable GUI gamepad usage now
         SdlGamepadKeyNavigation.enable()
+
+        // GpuVM: the window stays hidden and no dialog waits for a click; the app shows the error and the viewer
+        // exits by itself once the session is cleaned up (gpuvm/sessionhooks.cpp)
+        if (gpuvmHidden) {
+            return
+        }
 
         // Pop the StreamSegue off the stack if this is a GUI-based app launch
         if (!quitAfter) {
@@ -160,6 +171,15 @@ Item {
 
             // Initialize the session and probe for host/client capabilities
             if (!session.initialize(window)) {
+                // GpuVM: report the failure and let the session's end hook send "ended" and exit
+                if (gpuvmHidden) {
+                    if (!streamSegueErrorDialog.text) {
+                        session.displayLaunchError(qsTr("Unable to start the stream."))
+                    }
+                    session.readyForDeletion()
+                    return
+                }
+
                 sessionFinished(0);
                 sessionReadyForDeletion();
                 return;

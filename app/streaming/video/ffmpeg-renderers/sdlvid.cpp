@@ -2,6 +2,7 @@
 
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
+#include "gpuvm/viewport.h"
 
 #include <Limelight.h>
 
@@ -573,6 +574,7 @@ ReadbackRetry:
     src.h = frame->height;
     dst.x = dst.y = 0;
     SDL_GetRendererOutputSize(m_Renderer, &dst.w, &dst.h);
+    GpuVM::Viewport::apply(&dst);
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
     // Ensure the viewport is set to the desired video region

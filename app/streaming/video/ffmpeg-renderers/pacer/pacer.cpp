@@ -1,5 +1,7 @@
 #include "pacer.h"
 #include "streaming/streamutils.h"
+#include "gpuvm/sessionhooks.h"
+#include "gpuvm/viewport.h"
 
 #ifdef Q_OS_WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -29,6 +31,10 @@ static_assert(PACER_MAX_OUTSTANDING_FRAMES == MAX_QUEUED_FRAMES + 2,
 // V-sync happens.
 #define TIMER_SLACK_MS 3
 
+// GpuVM: while the picture's area moves, how long the render thread waits for a new frame before it draws the
+// last one again (the renderer's own wait already paces it to the display).
+#define GPUVM_REDRAW_WAIT_MS 4
+
 Pacer::Pacer(IFFmpegRenderer* renderer, PVIDEO_STATS videoStats) :
     m_RenderThread(nullptr),
     m_VsyncThread(nullptr),
@@ -45,6 +51,8 @@ Pacer::Pacer(IFFmpegRenderer* renderer, PVIDEO_STATS videoStats) :
 
 Pacer::~Pacer()
 {
+    GpuVM::Viewport::clearRedrawListener(this);
+
     m_Stopping = true;
 
     // Stop the V-sync thread
@@ -98,7 +106,45 @@ void Pacer::renderOnMainThread()
     }
     else {
         m_FrameQueueLock.unlock();
+
+        // GpuVM: the picture's area is moving; draw the last frame at its new place and come back for the next step
+        if (gpuvmNeedsRedraw()) {
+            gpuvmRedraw();
+            if (gpuvmNeedsRedraw()) {
+                gpuvmWake(this);
+            }
+        }
     }
+}
+
+void Pacer::gpuvmWake(void* context)
+{
+    Pacer* me = reinterpret_cast<Pacer*>(context);
+    if (me->m_RenderThread != nullptr) {
+        me->m_FrameQueueLock.lock();
+        me->m_RenderQueueNotEmpty.wakeAll();
+        me->m_FrameQueueLock.unlock();
+    }
+    else {
+        SDL_Event event = {};
+        event.type = SDL_USEREVENT;
+        event.user.code = SDL_CODE_FRAME_READY;
+        SDL_PushEvent(&event);
+    }
+}
+
+// On the thread that renders.
+bool Pacer::gpuvmNeedsRedraw()
+{
+    return m_DeferredFreeFrame != nullptr &&
+           (GpuVM::Viewport::animating() || GpuVM::Viewport::generation() != m_GpuVMDrawnGeneration);
+}
+
+// On the thread that renders. The last frame is still referenced (deferred free), so it is safe to draw again.
+void Pacer::gpuvmRedraw()
+{
+    m_GpuVMDrawnGeneration = GpuVM::Viewport::generation();
+    m_VsyncRenderer->renderFrame(m_DeferredFreeFrame);
 }
 
 int Pacer::vsyncThread(void *context)
@@ -153,7 +199,17 @@ int Pacer::renderThread(void* context)
         me->m_FrameQueueLock.lock();
 
         // Wait for a frame to be ready to render
+        bool gpuvmRedraw = false;
         while (!me->m_Stopping && me->m_RenderQueue.isEmpty()) {
+            // GpuVM: while the picture's area moves, the last frame is drawn again if no new one comes soon
+            if (me->gpuvmNeedsRedraw()) {
+                if (!me->m_RenderQueueNotEmpty.wait(&me->m_FrameQueueLock, GPUVM_REDRAW_WAIT_MS) &&
+                        me->m_RenderQueue.isEmpty()) {
+                    gpuvmRedraw = true;
+                    break;
+                }
+                continue;
+            }
             me->m_RenderQueueNotEmpty.wait(&me->m_FrameQueueLock);
         }
 
@@ -161,6 +217,12 @@ int Pacer::renderThread(void* context)
             // Exit this thread
             me->m_FrameQueueLock.unlock();
             break;
+        }
+
+        if (gpuvmRedraw) {
+            me->m_FrameQueueLock.unlock();
+            me->gpuvmRedraw();
+            continue;
         }
 
         AVFrame* frame = me->m_RenderQueue.dequeue();
@@ -321,6 +383,8 @@ bool Pacer::initialize(SDL_Window* window, int maxVideoFps, bool enablePacing)
         m_RenderThread = SDL_CreateThread(Pacer::renderThread, "PacerRender", this);
     }
 
+    GpuVM::Viewport::setRedrawListener(Pacer::gpuvmWake, this);
+
     return true;
 }
 
@@ -336,8 +400,12 @@ void Pacer::renderFrame(AVFrame* frame)
     m_VideoStats->totalPacerTimeUs += (beforeRender - (uint64_t)frame->pkt_dts);
 
     // Render it
+    m_GpuVMDrawnGeneration = GpuVM::Viewport::generation();
     m_VsyncRenderer->renderFrame(frame);
     uint64_t afterRender = LiGetMicroseconds();
+
+    // GpuVM: the first picture is on the screen (the app swaps its waiting view for the stream now)
+    GpuVM::reportFirstFrame();
 
     m_VideoStats->totalRenderTimeUs += (afterRender - beforeRender);
     m_VideoStats->renderedFrames++;

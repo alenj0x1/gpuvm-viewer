@@ -315,7 +315,8 @@ void SdlInputHandler::updatePointerRegionLock()
         SDL_GetWindowSize(m_Window, &dst.w, &dst.h);
 
         // Use the stream and window sizes to determine the video region
-        GpuVM::Viewport::apply(&dst);
+        // (GpuVM: where the side panel's animation ends, since this is set once per change)
+        GpuVM::Viewport::applyTarget(&dst);
         StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
         // SDL 2.0.18 lets us lock the cursor to a specific region

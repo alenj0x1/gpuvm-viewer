@@ -9,6 +9,7 @@
 #include "../ffmpeg.h"
 #include <streaming/streamutils.h>
 #include <streaming/session.h>
+#include "gpuvm/viewport.h"
 
 extern "C" {
 #include <libavutil/hwcontext_dxva2.h>
@@ -918,6 +919,7 @@ void DXVA2Renderer::renderFrame(AVFrame *frame)
     dst.w = m_DisplayWidth;
     dst.h = m_DisplayHeight;
 
+    GpuVM::Viewport::apply(&dst);
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
     sample.DstRect.left = dst.x;

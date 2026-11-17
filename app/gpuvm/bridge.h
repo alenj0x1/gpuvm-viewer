@@ -18,6 +18,8 @@
 
 #include <SDL.h>
 
+class QThread;
+
 namespace GpuVM {
 
 // SDL user event code for a command from the app (data1 = new QJsonObject, owned by the receiver).
@@ -46,18 +48,32 @@ public:
     // True when the viewer was started by GpuVM.
     bool enabled() const { return !m_PipeName.isEmpty(); }
 
-    // Connects and starts the reader thread. Commands are posted to SDL's queue while a stream is running and
-    // kept until then otherwise.
+    // Where the viewer keeps its settings, pairing identity, caches and logs when GpuVM runs it (stream and
+    // pair): %USERPROFILE%\AppData\LocalLow\GpuVM\Viewer, the one place a Low integrity process may write.
+    static QString dataDirectory();
+
+    // Points QSettings (an INI file there), Path's logs and caches and TEMP at dataDirectory(). Call before any
+    // QSettings is created. Moves what earlier viewers kept in HKCU\Software\GpuVM\Viewer once.
+    static void prepareStorage();
+
+    // Connects and starts the reader and writer threads.
     bool start();
+    // Sends what is queued (up to ~500 ms), then closes the pipe and waits for both threads. Main thread;
+    // safe to call more than once. Call it before the process exits.
     void stop();
 
-    // Viewer -> app.
+    // Viewer -> app. Queued; never blocks.
     void send(const QString& type, const QJsonObject& fields = QJsonObject());
 
     // Lets the app (and only the app) bring one of its windows to the front next, e.g. the panel.
     void allowAppForeground();
 
-    // Called once per session from the SDL thread.
+    // True once the app asked the viewer to quit (sticky: a quit is never lost).
+    bool quitRequested() const { return m_QuitRequested; }
+
+    // Session lifetime, from the main thread. Commands that arrive before the stream window exists (place, inset,
+    // capture...) are kept and replayed when it does; a quit before that interrupts the connection.
+    void sessionAttached();
     void sessionStarted();
     void sessionEnded();
 
@@ -66,6 +82,15 @@ private:
     void readLoop();
     void writeLoop();
     void dispatch(const QJsonObject& message);
+    void pushCommand(const QJsonObject& message);
+    void quitBeforeSession();
+
+    enum class Phase { NoSession, Attached, Running, Ended };
+
+    struct Outgoing {
+        QString type;
+        QByteArray line;
+    };
 
     QString m_PipeName;
     bool m_HasDisplay = false;
@@ -76,11 +101,22 @@ private:
     int m_DisplayY = 0;
     QString m_Token;
     void* m_Pipe = nullptr;  // HANDLE
-    void* m_WriteLock = nullptr;  // SDL_mutex*
-    void* m_WriteReady = nullptr;  // SDL_cond*
-    QList<QByteArray> m_Outgoing;
-    std::atomic<bool> m_InSession{false};
-    std::atomic<bool> m_Stopping{false};
+    QThread* m_Reader = nullptr;
+    QThread* m_Writer = nullptr;
+
+    // Outgoing queue (m_WriteLock).
+    SDL_mutex* m_WriteLock = nullptr;
+    SDL_cond* m_WriteReady = nullptr;
+    QList<Outgoing> m_Outgoing;
+    bool m_WriterDead = false;
+
+    // Incoming commands (m_CommandLock).
+    SDL_mutex* m_CommandLock = nullptr;
+    Phase m_Phase = Phase::NoSession;
+    QList<QJsonObject> m_Pending;
+
+    std::atomic<bool> m_StopRequested{false};
+    std::atomic<bool> m_QuitRequested{false};
 };
 
 }

@@ -20,6 +20,9 @@ public:
 
     static void initialize(bool portable);
 
+    // GpuVM: logs and caches all under one folder (one a Low integrity process can write)
+    static void initializeIn(const QString& directory);
+
 private:
     static QString s_CacheDir;
     static QString s_LogDir;

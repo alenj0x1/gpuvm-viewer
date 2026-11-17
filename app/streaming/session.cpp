@@ -1555,12 +1555,27 @@ void Session::toggleFullscreen()
     SDL_UnlockMutex(m_DecoderLock);
 #endif
 
+    int gpuvmOldWidth, gpuvmOldHeight;
+    SDL_GetWindowSize(m_Window, &gpuvmOldWidth, &gpuvmOldHeight);
+
     // Actually enter/leave fullscreen
     SDL_SetWindowFullscreen(m_Window, fullScreen ? m_FullScreenFlag : 0);
 
     // GpuVM: out of full screen, the picture goes back inside the app's window
     if (!fullScreen) {
         gpuvmApplyEmbed(true);
+    }
+
+    // GpuVM: the decoder is rebuilt (with a new IDR frame) on the size change that follows the toggle. When the
+    // window keeps its size (the app's area already covers the monitor) no such event comes: ask for it.
+    if (GpuVM::Bridge::instance().enabled()) {
+        int width, height;
+        SDL_GetWindowSize(m_Window, &width, &height);
+        if (width == gpuvmOldWidth && height == gpuvmOldHeight) {
+            SDL_Event resetEvent = {};
+            resetEvent.type = SDL_RENDER_DEVICE_RESET;
+            SDL_PushEvent(&resetEvent);
+        }
     }
 
 #ifdef Q_OS_DARWIN
@@ -1855,13 +1870,15 @@ void Session::exec()
     // We always want a resizable window with High DPI enabled
     Uint32 defaultWindowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
 
-    // GpuVM: inside the app the window is created hidden and borderless, then shown already below the app (it
-    // flashed over the app for a moment with its border when created shown)
+    // GpuVM: inside the app the window is always created hidden and borderless, then shown already below the app
+    // (it flashed over the app for a moment with its border when created shown). It starts windowed: the app
+    // asks for full screen when it reveals the picture.
     {
         quintptr gpuvmApp;
         SDL_Rect gpuvmRect;
-        if (!m_IsFullScreen && GpuVM::Bridge::instance().embed(gpuvmApp, gpuvmRect)) {
+        if (GpuVM::Bridge::instance().embed(gpuvmApp, gpuvmRect)) {
             defaultWindowFlags |= SDL_WINDOW_HIDDEN | SDL_WINDOW_BORDERLESS;
+            m_IsFullScreen = false;
         }
     }
 
@@ -1957,9 +1974,9 @@ void Session::exec()
         SDL_SetWindowFullscreen(m_Window, m_FullScreenFlag);
     }
 
-    GpuVM::Bridge::instance().sessionStarted();
     gpuvmPrepareEmbed();
-    GpuVM::reportWindow(m_Window, m_IsFullScreen);
+    GpuVM::reportWindow(m_Window);
+    GpuVM::Bridge::instance().sessionStarted();
 
     bool needsFirstEnterCapture = false;
     bool needsPostDecoderCreationCapture = false;
@@ -2121,7 +2138,7 @@ void Session::exec()
             case SDL_WINDOWEVENT_SIZE_CHANGED:
             case SDL_WINDOWEVENT_MINIMIZED:
             case SDL_WINDOWEVENT_RESTORED:
-                GpuVM::reportWindow(m_Window, m_IsFullScreen);
+                GpuVM::reportWindow(m_Window);
                 break;
             }
 
@@ -2465,7 +2482,7 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
     }
     else if (type == "fullscreen") {
         toggleFullscreen();
-        GpuVM::reportWindow(m_Window, SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP));
+        GpuVM::reportWindow(m_Window);
     }
     else if (type == "stats") {
         m_OverlayManager.setOverlayState(Overlay::OverlayDebug, command->value("on").toBool());
@@ -2499,8 +2516,8 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
         bool isFull = SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
         if (type == "reveal" && command->value("fullscreen").toBool() && !isFull) {
             toggleFullscreen();
-            isFull = true;
-            GpuVM::reportWindow(m_Window, true);
+            isFull = SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
+            GpuVM::reportWindow(m_Window);
         }
         SDL_ShowWindow(m_Window);
         SDL_RaiseWindow(m_Window);

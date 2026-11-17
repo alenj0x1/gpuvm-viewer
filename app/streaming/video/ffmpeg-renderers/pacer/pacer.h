@@ -56,6 +56,12 @@ private:
 
     void dropFrameForEnqueue(QQueue<AVFrame*>& queue);
 
+    // GpuVM: while the picture's area moves (side panel), the last frame is drawn again at each step.
+    static void gpuvmWake(void* context);
+    bool gpuvmNeedsRedraw();
+    void gpuvmRedraw();
+    unsigned m_GpuVMDrawnGeneration = 0;
+
     QQueue<AVFrame*> m_RenderQueue;
     QQueue<AVFrame*> m_PacingQueue;
     QQueue<int> m_PacingQueueHistory;
