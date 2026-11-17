@@ -29,6 +29,9 @@ public:
     // Parses the GpuVM arguments; returns false if they're malformed. Removes them from argv.
     bool parseArguments(int& argc, char* argv[]);
 
+    // A point on the display the stream window should open on (--gpuvm-display x,y), if GpuVM gave one.
+    bool displayPoint(int& x, int& y) const { x = m_DisplayX; y = m_DisplayY; return m_HasDisplay; }
+
     // True when the viewer was started by GpuVM.
     bool enabled() const { return !m_PipeName.isEmpty(); }
 
@@ -54,6 +57,9 @@ private:
     void dispatch(const QJsonObject& message);
 
     QString m_PipeName;
+    bool m_HasDisplay = false;
+    int m_DisplayX = 0;
+    int m_DisplayY = 0;
     QString m_Token;
     void* m_Pipe = nullptr;  // HANDLE
     void* m_WriteLock = nullptr;  // SDL_mutex*

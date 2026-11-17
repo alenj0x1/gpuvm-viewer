@@ -3,6 +3,7 @@
 #include <QJsonDocument>
 #include <QByteArray>
 #include <QThread>
+#include <QStringList>
 #include <QCoreApplication>
 #include <QMetaObject>
 
@@ -61,6 +62,16 @@ bool Bridge::parseArguments(int& argc, char* argv[])
     int out = 1;
     for (int i = 1; i < argc; i++) {
         QString arg = QString::fromLocal8Bit(argv[i]);
+        if (arg == "--gpuvm-display" && i + 1 < argc) {
+            QStringList parts = QString::fromLocal8Bit(argv[++i]).split(',');
+            bool okX = false, okY = false;
+            if (parts.size() == 2) {
+                m_DisplayX = parts[0].toInt(&okX);
+                m_DisplayY = parts[1].toInt(&okY);
+            }
+            m_HasDisplay = okX && okY;
+            continue;
+        }
         if ((arg == "--gpuvm-pipe" || arg == "--gpuvm-token-env") && i + 1 < argc) {
             QString value = QString::fromLocal8Bit(argv[++i]);
             if (arg == "--gpuvm-pipe") {

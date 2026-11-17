@@ -1325,9 +1325,22 @@ void Session::getWindowDimensions(int& x, int& y,
 {
     int displayIndex = 0;
 
+    int gpuvmX, gpuvmY;
     if (m_Window != nullptr) {
         displayIndex = SDL_GetWindowDisplayIndex(m_Window);
         SDL_assert(displayIndex >= 0);
+    }
+    // GpuVM: the display of the machine's monitor
+    else if (GpuVM::Bridge::instance().displayPoint(gpuvmX, gpuvmY)) {
+        for (int i = 0; i < SDL_GetNumVideoDisplays(); i++) {
+            SDL_Rect bounds;
+            if (SDL_GetDisplayBounds(i, &bounds) == 0 &&
+                    gpuvmX >= bounds.x && gpuvmX < bounds.x + bounds.w &&
+                    gpuvmY >= bounds.y && gpuvmY < bounds.y + bounds.h) {
+                displayIndex = i;
+                break;
+            }
+        }
     }
     // Create our window on the same display that Qt's UI
     // was being displayed on.
