@@ -2548,14 +2548,18 @@ void Session::gpuvmApplyEmbed(bool owned)
             SetWindowLongPtrW(info.info.win.window, GWLP_HWNDPARENT, (LONG_PTR)app);
         }
         else {
-            // Placed below the app while still hidden, then shown there without taking the focus (SDL shows it, so
-            // it knows the window is visible and creates the decoder).
-            SetWindowPos(info.info.win.window, (HWND)app, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            // Shown by Windows directly below the app and without the focus (SDL_ShowWindow brings it to the front
+            // even without activating it). SDL hears WM_SHOWWINDOW, so it knows the window is visible and creates the
+            // decoder; if it didn't, SDL shows it and it goes back below the app at once.
+            SetWindowPos(info.info.win.window, (HWND)app, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             if (SDL_GetWindowFlags(m_Window) & SDL_WINDOW_HIDDEN) {
                 SDL_SetHint(SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN, "1");
                 SDL_ShowWindow(m_Window);
                 SDL_SetHint(SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN, "0");
+                SetWindowPos(info.info.win.window, (HWND)app, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM: waiting below the app (SDL hidden flag: %d)",
+                        (SDL_GetWindowFlags(m_Window) & SDL_WINDOW_HIDDEN) ? 1 : 0);
         }
     }
 #else
