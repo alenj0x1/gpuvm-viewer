@@ -300,6 +300,14 @@ echo Copying application binary to deployment directory
 copy %BUILD_FOLDER%\app\%BUILD_CONFIG%\Moonlight.exe %DEPLOY_FOLDER%
 if !ERRORLEVEL! NEQ 0 goto Error
 
+rem GpuVM: Qt's OpenSSL TLS backend (windeployqt leaves it out). At Low integrity Schannel can't import the client
+rem key, so the viewer uses OpenSSL in GpuVM mode (main.cpp).
+if defined QT_BIN (
+    if not exist %DEPLOY_FOLDER%\tls mkdir %DEPLOY_FOLDER%\tls
+    copy "%QT_BIN%\..\plugins\tls\qopensslbackend.dll" %DEPLOY_FOLDER%\tls\
+    if !ERRORLEVEL! NEQ 0 goto Error
+)
+
 echo Building portable package
 rem This must be done after WiX harvesting and signing, since the VCRT dlls are MS signed
 rem and should not be harvested for inclusion in the full installer

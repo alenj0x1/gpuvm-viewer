@@ -57,6 +57,7 @@
 #include "gpuvm/bridge.h"
 #include "gpuvm/sessionhooks.h"
 #include <QJsonObject>
+#include <QSslSocket>
 #include <QTimer>
 
 #if defined(Q_OS_WIN32)
@@ -769,6 +770,23 @@ int main(int argc, char *argv[])
     }
 
     QGuiApplication app(argc, argv);
+
+    // GpuVM: TLS through OpenSSL, not Schannel. Schannel needs the client key imported into the user's key store
+    // (%APPDATA%\Microsoft\Crypto), which a Low-integrity process can't write: pairing and every connection failed
+    // with NTE_PERM. OpenSSL keeps the key in memory. Without the plugin the viewer stops here instead of failing
+    // later with a vague connection error.
+    if (GpuVM::Bridge::instance().quiet()) {
+        if (!QSslSocket::setActiveBackend(QStringLiteral("openssl"))) {
+            qCritical() << "GpuVM: Qt's OpenSSL TLS backend is missing; available:" << QSslSocket::availableBackends();
+            if (GpuVM::Bridge::instance().enabled() && GpuVM::Bridge::instance().start()) {
+                QJsonObject f;
+                f["message"] = QStringLiteral("Falta un componente del visor (TLS). Reinstala GpuVM.");
+                GpuVM::Bridge::instance().send("error", f);
+                GpuVM::Bridge::instance().stop();
+            }
+            return 1;
+        }
+    }
 
     // GpuVM: the app shows the progress, errors and the panel; this process only streams.
     if (GpuVM::Bridge::instance().enabled() && !GpuVM::Bridge::instance().start()) {
