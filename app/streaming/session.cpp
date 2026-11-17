@@ -1558,6 +1558,11 @@ void Session::toggleFullscreen()
     // Actually enter/leave fullscreen
     SDL_SetWindowFullscreen(m_Window, fullScreen ? m_FullScreenFlag : 0);
 
+    // GpuVM: out of full screen, the picture goes back inside the app's window
+    if (!fullScreen) {
+        gpuvmApplyEmbed(true);
+    }
+
 #ifdef Q_OS_DARWIN
     // SDL on macOS has a bug that causes the window size to be reset to crazy
     // large dimensions when exiting out of true fullscreen mode. We can work
@@ -2450,7 +2455,7 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
     }
     else if (type == "fullscreen") {
         toggleFullscreen();
-        GpuVM::reportWindow(m_Window, m_IsFullScreen);
+        GpuVM::reportWindow(m_Window, SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP));
     }
     else if (type == "stats") {
         m_OverlayManager.setOverlayState(Overlay::OverlayDebug, command->value("on").toBool());
@@ -2458,9 +2463,13 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
     else if (type == "place") {
         // The app's content area moved or changed size (physical pixels).
         int w = command->value("w").toInt(), h = command->value("h").toInt();
-        if (!m_IsFullScreen && w > 0 && h > 0) {
-            SDL_SetWindowPosition(m_Window, command->value("x").toInt(), command->value("y").toInt());
-            SDL_SetWindowSize(m_Window, w, h);
+        if (w > 0 && h > 0) {
+            SDL_Rect rect = { command->value("x").toInt(), command->value("y").toInt(), w, h };
+            GpuVM::Bridge::instance().setEmbedRect(rect);
+            if (!(SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP))) {
+                SDL_SetWindowPosition(m_Window, rect.x, rect.y);
+                SDL_SetWindowSize(m_Window, rect.w, rect.h);
+            }
         }
     }
     else if (type == "reveal" || type == "show") {
@@ -2477,7 +2486,13 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
 #endif
         SDL_ShowWindow(m_Window);
         SDL_RaiseWindow(m_Window);
-        if (m_IsFullScreen || m_Preferences->absoluteMouseMode) {
+        bool isFull = SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
+        if (type == "reveal" && command->value("fullscreen").toBool() && !isFull) {
+            toggleFullscreen();
+            isFull = true;
+            GpuVM::reportWindow(m_Window, true);
+        }
+        if (isFull || m_Preferences->absoluteMouseMode) {
             m_InputHandler->setCaptureActive(true);
         }
     }
@@ -2499,10 +2514,18 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
 // own "opening" view meanwhile) until the app reveals it with the first picture.
 void Session::gpuvmPrepareEmbed()
 {
+    gpuvmApplyEmbed(false);
+}
+
+// Inside the app: no border, over the app's content area. Owned: just above the app (after the reveal); not owned:
+// just below it (waiting for the first picture).
+void Session::gpuvmApplyEmbed(bool owned)
+{
 #ifdef Q_OS_WIN32
     quintptr app = 0;
     SDL_Rect rect;
-    if (m_IsFullScreen || !GpuVM::Bridge::instance().embed(app, rect)) {
+    if (!GpuVM::Bridge::instance().embed(app, rect) ||
+            (SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP))) {
         return;
     }
     SDL_SetWindowBordered(m_Window, SDL_FALSE);
@@ -2511,7 +2534,14 @@ void Session::gpuvmPrepareEmbed()
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);
     if (SDL_GetWindowWMInfo(m_Window, &info) && info.subsystem == SDL_SYSWM_WINDOWS) {
-        SetWindowPos(info.info.win.window, (HWND)app, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        if (owned) {
+            SetWindowLongPtrW(info.info.win.window, GWLP_HWNDPARENT, (LONG_PTR)app);
+        }
+        else {
+            SetWindowPos(info.info.win.window, (HWND)app, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
     }
+#else
+    Q_UNUSED(owned);
 #endif
 }

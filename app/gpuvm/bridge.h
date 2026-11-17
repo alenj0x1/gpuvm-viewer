@@ -37,6 +37,8 @@ public:
     // Inside the GpuVM app's window (--gpuvm-embed hwnd,x,y,w,h): a borderless window over the app's content
     // area, waiting just below the app until the app reveals it with the first picture.
     bool embed(quintptr& app, SDL_Rect& rect) const { app = m_EmbedApp; rect = m_EmbedRect; return m_EmbedApp != 0; }
+    // The app's content area moved or changed size.
+    void setEmbedRect(const SDL_Rect& rect) { m_EmbedRect = rect; }
 
     // GpuVM pairs the viewer with --gpuvm-quiet: no window, the result is the exit code.
     bool quiet() const { return m_Quiet || enabled(); }

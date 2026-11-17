@@ -173,6 +173,8 @@ private:
 
     void gpuvmPrepareEmbed();
 
+    void gpuvmApplyEmbed(bool owned);
+
     void notifyMouseEmulationMode(bool enabled);
 
     void updateOptimalWindowDisplayMode();

@@ -75,7 +75,7 @@ void reportWindow(SDL_Window* window, bool fullScreen)
         // As a number: HWNDs are 32-bit values even on 64-bit Windows, so a double holds them exactly.
         f["hwnd"] = (double)(quintptr)info.info.win.window;
     }
-    f["fullScreen"] = fullScreen;
+    f["fullScreen"] = fullScreen || (SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) != 0;
     Bridge::instance().send("window", f);
 }
 
