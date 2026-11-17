@@ -16,6 +16,8 @@
 #include <QByteArray>
 #include <atomic>
 
+#include <SDL.h>
+
 namespace GpuVM {
 
 // SDL user event code for a command from the app (data1 = new QJsonObject, owned by the receiver).
@@ -31,6 +33,13 @@ public:
 
     // A point on the display the stream window should open on (--gpuvm-display x,y), if GpuVM gave one.
     bool displayPoint(int& x, int& y) const { x = m_DisplayX; y = m_DisplayY; return m_HasDisplay; }
+
+    // Inside the GpuVM app's window (--gpuvm-embed hwnd,x,y,w,h): a borderless window over the app's content
+    // area, waiting just below the app until the app reveals it with the first picture.
+    bool embed(quintptr& app, SDL_Rect& rect) const { app = m_EmbedApp; rect = m_EmbedRect; return m_EmbedApp != 0; }
+
+    // GpuVM pairs the viewer with --gpuvm-quiet: no window, the result is the exit code.
+    bool quiet() const { return m_Quiet || enabled(); }
 
     // True when the viewer was started by GpuVM.
     bool enabled() const { return !m_PipeName.isEmpty(); }
@@ -58,6 +67,9 @@ private:
 
     QString m_PipeName;
     bool m_HasDisplay = false;
+    bool m_Quiet = false;
+    quintptr m_EmbedApp = 0;
+    SDL_Rect m_EmbedRect = {};
     int m_DisplayX = 0;
     int m_DisplayY = 0;
     QString m_Token;

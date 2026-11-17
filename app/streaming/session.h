@@ -171,6 +171,8 @@ private:
 
     bool handleGpuVMCommand(QJsonObject* command);
 
+    void gpuvmPrepareEmbed();
+
     void notifyMouseEmulationMode(bool enabled);
 
     void updateOptimalWindowDisplayMode();

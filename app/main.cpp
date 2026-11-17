@@ -1048,6 +1048,11 @@ int main(int argc, char *argv[])
             pairParser.parse(app.arguments());
             auto launcher = new CliPair::Launcher(pairParser.getHost(), pairParser.getPredefinedPin(), &app);
             engine.rootContext()->setContextProperty("launcher", launcher);
+            if (GpuVM::Bridge::instance().quiet()) {
+                // GpuVM reads the exit code; the dialogs that would wait for a click stay hidden.
+                QObject::connect(launcher, &CliPair::Launcher::success, [] { QTimer::singleShot(0, qApp, [] { QCoreApplication::exit(0); }); });
+                QObject::connect(launcher, &CliPair::Launcher::failed, [](QString) { QTimer::singleShot(0, qApp, [] { QCoreApplication::exit(1); }); });
+            }
             break;
         }
     case GlobalCommandLineParser::ListRequested:
@@ -1064,7 +1069,7 @@ int main(int argc, char *argv[])
     if (hasGUI) {
         engine.rootContext()->setContextProperty("initialView", initialView);
         engine.rootContext()->setContextProperty("runConfigChecks", commandLineParserResult == GlobalCommandLineParser::NormalStartRequested);
-        engine.rootContext()->setContextProperty("gpuvmHidden", GpuVM::Bridge::instance().enabled());
+        engine.rootContext()->setContextProperty("gpuvmHidden", GpuVM::Bridge::instance().quiet());
 
         // Load the main.qml file
         engine.load(QUrl(QStringLiteral("qrc:/gui/main.qml")));

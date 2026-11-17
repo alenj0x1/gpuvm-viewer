@@ -37,7 +37,7 @@ bool isValidPipeName(const QString& name)
 // Commands the app may send. Each is checked again where it is handled.
 bool isKnownCommand(const QString& type)
 {
-    static const char* known[] = { "inset", "capture", "fullscreen", "stats", "quit", "focus" };
+    static const char* known[] = { "inset", "capture", "fullscreen", "stats", "quit", "focus", "place", "reveal", "show", "hide" };
     for (const char* k : known) {
         if (type == QLatin1String(k)) {
             return true;
@@ -62,6 +62,24 @@ bool Bridge::parseArguments(int& argc, char* argv[])
     int out = 1;
     for (int i = 1; i < argc; i++) {
         QString arg = QString::fromLocal8Bit(argv[i]);
+        if (arg == "--gpuvm-embed" && i + 1 < argc) {
+            QStringList parts = QString::fromLocal8Bit(argv[++i]).split(',');
+            bool ok = parts.size() == 5;
+            qulonglong hwnd = ok ? parts[0].toULongLong(&ok) : 0;
+            int v[4] = {};
+            for (int k = 0; ok && k < 4; k++) {
+                v[k] = parts[k + 1].toInt(&ok);
+            }
+            if (ok && hwnd != 0 && v[2] > 0 && v[3] > 0) {
+                m_EmbedApp = (quintptr)hwnd;
+                m_EmbedRect = { v[0], v[1], v[2], v[3] };
+            }
+            continue;
+        }
+        if (arg == "--gpuvm-quiet") {
+            m_Quiet = true;
+            continue;
+        }
         if (arg == "--gpuvm-display" && i + 1 < argc) {
             QStringList parts = QString::fromLocal8Bit(argv[++i]).split(',');
             bool okX = false, okY = false;

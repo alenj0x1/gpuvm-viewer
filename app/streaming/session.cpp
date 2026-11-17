@@ -10,6 +10,13 @@
 #include "gpuvm/sessionhooks.h"
 #include "gpuvm/viewport.h"
 #include <QJsonObject>
+#include <SDL_syswm.h>
+#ifdef Q_OS_WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #ifdef HAVE_FFMPEG
 #include "video/ffmpeg.h"
@@ -1326,6 +1333,15 @@ void Session::getWindowDimensions(int& x, int& y,
     int displayIndex = 0;
 
     int gpuvmX, gpuvmY;
+    quintptr gpuvmApp;
+    SDL_Rect gpuvmRect;
+    if (m_Window == nullptr && GpuVM::Bridge::instance().embed(gpuvmApp, gpuvmRect)) {
+        x = gpuvmRect.x;
+        y = gpuvmRect.y;
+        width = gpuvmRect.w;
+        height = gpuvmRect.h;
+        return;
+    }
     if (m_Window != nullptr) {
         displayIndex = SDL_GetWindowDisplayIndex(m_Window);
         SDL_assert(displayIndex >= 0);
@@ -1927,6 +1943,7 @@ void Session::exec()
     }
 
     GpuVM::Bridge::instance().sessionStarted();
+    gpuvmPrepareEmbed();
     GpuVM::reportWindow(m_Window, m_IsFullScreen);
 
     bool needsFirstEnterCapture = false;
@@ -2438,10 +2455,63 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
     else if (type == "stats") {
         m_OverlayManager.setOverlayState(Overlay::OverlayDebug, command->value("on").toBool());
     }
+    else if (type == "place") {
+        // The app's content area moved or changed size (physical pixels).
+        int w = command->value("w").toInt(), h = command->value("h").toInt();
+        if (!m_IsFullScreen && w > 0 && h > 0) {
+            SDL_SetWindowPosition(m_Window, command->value("x").toInt(), command->value("y").toInt());
+            SDL_SetWindowSize(m_Window, w, h);
+        }
+    }
+    else if (type == "reveal" || type == "show") {
+#ifdef Q_OS_WIN32
+        SDL_SysWMinfo info;
+        SDL_VERSION(&info.version);
+        quintptr app = 0;
+        SDL_Rect unused;
+        if (SDL_GetWindowWMInfo(m_Window, &info) && info.subsystem == SDL_SYSWM_WINDOWS &&
+                GpuVM::Bridge::instance().embed(app, unused)) {
+            // Owned by the app's window from now on: always just above it, minimized and restored with it.
+            SetWindowLongPtrW(info.info.win.window, GWLP_HWNDPARENT, (LONG_PTR)app);
+        }
+#endif
+        SDL_ShowWindow(m_Window);
+        SDL_RaiseWindow(m_Window);
+        if (m_IsFullScreen || m_Preferences->absoluteMouseMode) {
+            m_InputHandler->setCaptureActive(true);
+        }
+    }
+    else if (type == "hide") {
+        // Back to the app's home while the session stays connected.
+        m_InputHandler->raiseAllKeys();
+        m_InputHandler->setCaptureActive(false);
+        SDL_HideWindow(m_Window);
+    }
     else if (type == "inset") {
         GpuVM::Viewport::setRightInset((float)command->value("fraction").toDouble(),
                                        command->value("durationMs").toInt(0));
         m_InputHandler->updatePointerRegionLock();
     }
     return false;
+}
+
+// GpuVM: inside the app's window, the stream window has no border and waits just below the app (the app shows its
+// own "opening" view meanwhile) until the app reveals it with the first picture.
+void Session::gpuvmPrepareEmbed()
+{
+#ifdef Q_OS_WIN32
+    quintptr app = 0;
+    SDL_Rect rect;
+    if (m_IsFullScreen || !GpuVM::Bridge::instance().embed(app, rect)) {
+        return;
+    }
+    SDL_SetWindowBordered(m_Window, SDL_FALSE);
+    SDL_SetWindowPosition(m_Window, rect.x, rect.y);
+    SDL_SetWindowSize(m_Window, rect.w, rect.h);
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+    if (SDL_GetWindowWMInfo(m_Window, &info) && info.subsystem == SDL_SYSWM_WINDOWS) {
+        SetWindowPos(info.info.win.window, (HWND)app, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+#endif
 }
