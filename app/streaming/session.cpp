@@ -1855,6 +1855,16 @@ void Session::exec()
     // We always want a resizable window with High DPI enabled
     Uint32 defaultWindowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
 
+    // GpuVM: inside the app the window is created hidden and borderless, then shown already below the app (it
+    // flashed over the app for a moment with its border when created shown)
+    {
+        quintptr gpuvmApp;
+        SDL_Rect gpuvmRect;
+        if (!m_IsFullScreen && GpuVM::Bridge::instance().embed(gpuvmApp, gpuvmRect)) {
+            defaultWindowFlags |= SDL_WINDOW_HIDDEN | SDL_WINDOW_BORDERLESS;
+        }
+    }
+
     // If we're starting in windowed mode and the Moonlight GUI is maximized or
     // minimized, match that with the streaming window.
     if (!m_IsFullScreen && m_QtWindow != nullptr) {
@@ -2538,7 +2548,14 @@ void Session::gpuvmApplyEmbed(bool owned)
             SetWindowLongPtrW(info.info.win.window, GWLP_HWNDPARENT, (LONG_PTR)app);
         }
         else {
+            // Placed below the app while still hidden, then shown there without taking the focus (SDL shows it, so
+            // it knows the window is visible and creates the decoder).
             SetWindowPos(info.info.win.window, (HWND)app, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            if (SDL_GetWindowFlags(m_Window) & SDL_WINDOW_HIDDEN) {
+                SDL_SetHint(SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN, "1");
+                SDL_ShowWindow(m_Window);
+                SDL_SetHint(SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN, "0");
+            }
         }
     }
 #else
