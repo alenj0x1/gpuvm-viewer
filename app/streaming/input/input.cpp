@@ -4,6 +4,7 @@
 #include "settings/mappingmanager.h"
 #include "path.h"
 #include "utils.h"
+#include "gpuvm/bridge.h"
 
 #include <QtGlobal>
 #include <QDir>
@@ -129,6 +130,11 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboQuitAndExit].keyCode = SDLK_e;
     m_SpecialKeyCombos[KeyComboQuitAndExit].scanCode = SDL_SCANCODE_E;
     m_SpecialKeyCombos[KeyComboQuitAndExit].enabled = true;
+
+    m_SpecialKeyCombos[KeyComboGpuVMPanel].keyCombo = KeyComboGpuVMPanel;
+    m_SpecialKeyCombos[KeyComboGpuVMPanel].keyCode = SDLK_g;
+    m_SpecialKeyCombos[KeyComboGpuVMPanel].scanCode = SDL_SCANCODE_G;
+    m_SpecialKeyCombos[KeyComboGpuVMPanel].enabled = GpuVM::Bridge::instance().enabled();
 
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].keyCombo = KeyComboToggleKeyboardGrab;
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].keyCode = SDLK_k;

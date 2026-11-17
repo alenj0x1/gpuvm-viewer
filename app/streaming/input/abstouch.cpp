@@ -4,6 +4,7 @@
 #include "SDL_compat.h"
 #include <SDL_syswm.h>
 #include "streaming/streamutils.h"
+#include "gpuvm/viewport.h"
 
 #include <QtMath>
 
@@ -75,6 +76,7 @@ void SdlInputHandler::handleAbsoluteFingerEvent(SDL_TouchFingerEvent* event)
     dst.h = windowHeight;
 
     // Scale window-relative events to be video-relative and clamp to video region
+    GpuVM::Viewport::apply(&dst);
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
     float vidrelx = qMin(qMax((int)(event->x * windowWidth), dst.x), dst.x + dst.w) - dst.x;
     float vidrely = qMin(qMax((int)(event->y * windowHeight), dst.y), dst.y + dst.h) - dst.y;
@@ -180,6 +182,7 @@ void SdlInputHandler::emulateAbsoluteFingerEvent(SDL_TouchFingerEvent* event)
     dst.h = windowHeight;
 
     // Use the stream and window sizes to determine the video region
+    GpuVM::Viewport::apply(&dst);
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
     if (qSqrt(qPow(event->x - m_LastTouchDownEvent.x, 2) + qPow(event->y - m_LastTouchDownEvent.y, 2)) > LONG_PRESS_ACTIVATION_DELTA) {

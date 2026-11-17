@@ -166,6 +166,9 @@ macx {
 }
 
 SOURCES += \
+    gpuvm/bridge.cpp \
+    gpuvm/sessionhooks.cpp \
+    gpuvm/viewport.cpp \
     backend/nvaddress.cpp \
     backend/nvapp.cpp \
     cli/pair.cpp \
@@ -207,6 +210,9 @@ SOURCES += \
     wm.cpp
 
 HEADERS += \
+    gpuvm/bridge.h \
+    gpuvm/sessionhooks.h \
+    gpuvm/viewport.h \
     SDL_compat.h \
     backend/nvaddress.h \
     backend/nvapp.h \

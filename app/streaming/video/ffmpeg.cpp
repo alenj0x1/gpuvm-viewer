@@ -2,6 +2,7 @@
 #include "ffmpeg.h"
 #include "utils.h"
 #include "streaming/session.h"
+#include "gpuvm/sessionhooks.h"
 
 #include <h264_stream.h>
 
@@ -1885,6 +1886,9 @@ void FFmpegVideoDecoder::decoderThreadProc()
                 if (err == 0) {
                     SDL_assert(m_FrameInfoQueue.size() == m_FramesIn - m_FramesOut);
                     m_FramesOut++;
+                    if (m_FramesOut == 1) {
+                        GpuVM::reportFirstFrame();
+                    }
 
                     // Attach HDR metadata to the frame if it's not already present. We will defer to
                     // any metadata contained in the bitstream itself since that is guaranteed to be
@@ -2130,6 +2134,18 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
                                 Session::get()->getOverlayManager().getOverlayText(Overlay::OverlayDebug),
                                 Session::get()->getOverlayManager().getOverlayMaxTextLength());
             Session::get()->getOverlayManager().setOverlayTextUpdated(Overlay::OverlayDebug);
+        }
+
+        // GpuVM: the panel shows these (queued; never blocks this thread)
+        {
+            VIDEO_STATS w = {};
+            addVideoStats(m_ActiveWndVideoStats, w);
+            GpuVM::reportStats(w.receivedFps, w.renderedFps,
+                               w.totalFrames ? 100.0 * w.networkDroppedFrames / w.totalFrames : 0.0,
+                               w.decodedFrames ? w.totalDecodeTimeUs / 1000.0 / w.decodedFrames : 0.0,
+                               w.renderedFrames ? w.totalRenderTimeUs / 1000.0 / w.renderedFrames : 0.0,
+                               w.framesWithHostProcessingLatency ? w.totalHostProcessingLatency / 10.0 / w.framesWithHostProcessingLatency : 0.0,
+                               w.lastRtt);
         }
 
         // Accumulate these values into the global stats

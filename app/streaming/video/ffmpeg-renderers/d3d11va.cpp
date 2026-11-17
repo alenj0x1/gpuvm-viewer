@@ -5,6 +5,8 @@
 #include "dxutil.h"
 #include "path.h"
 #include "utils.h"
+#include "gpuvm/bridge.h"
+#include "gpuvm/viewport.h"
 
 #include "streaming/streamutils.h"
 #include "streaming/session.h"
@@ -768,7 +770,9 @@ void D3D11VARenderer::renderFrame(AVFrame* frame)
 
     // Clear the back buffer
     const float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    m_RenderDeviceContext->ClearRenderTargetView(m_RenderTargetView.Get(), clearColor);
+    const float gpuvmClearColor[4] = {0x16 / 255.0f, 0x16 / 255.0f, 0x16 / 255.0f, 1.0f};
+    m_RenderDeviceContext->ClearRenderTargetView(m_RenderTargetView.Get(),
+                                                 GpuVM::Bridge::instance().enabled() ? gpuvmClearColor : clearColor);
 
     // Bind the back buffer. This needs to be done each time,
     // because the render target view will be unbound by Present().
@@ -887,7 +891,9 @@ void D3D11VARenderer::renderOverlay(Overlay::OverlayType type)
 
 void D3D11VARenderer::bindVideoVertexBuffer(bool frameChanged, AVFrame* frame)
 {
-    if (frameChanged || !m_VideoVertexBuffer) {
+    unsigned viewportGeneration = GpuVM::Viewport::generation();
+    if (frameChanged || !m_VideoVertexBuffer || viewportGeneration != m_GpuVMViewportGeneration) {
+        m_GpuVMViewportGeneration = viewportGeneration;
         // Scale video to the window size while preserving aspect ratio
         SDL_Rect src, dst;
         src.x = src.y = 0;
@@ -896,6 +902,7 @@ void D3D11VARenderer::bindVideoVertexBuffer(bool frameChanged, AVFrame* frame)
         dst.x = dst.y = 0;
         dst.w = m_DisplayWidth;
         dst.h = m_DisplayHeight;
+        GpuVM::Viewport::apply(&dst);
         StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
         // Convert screen space to normalized device coordinates

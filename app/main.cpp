@@ -54,6 +54,9 @@
 #include "streaming/session.h"
 #include "settings/streamingpreferences.h"
 #include "gui/sdlgamepadkeynavigation.h"
+#include "gpuvm/bridge.h"
+#include <QJsonObject>
+#include <QTimer>
 
 #if defined(Q_OS_WIN32)
 #define IS_UNSPECIFIED_HANDLE(x) ((x) == INVALID_HANDLE_VALUE || (x) == NULL)
@@ -428,9 +431,15 @@ int main(int argc, char *argv[])
     // Set these here to allow us to use the default QSettings constructor.
     // These also ensure that our cache directory is named correctly. As such,
     // it is critical that these be called before Path::initialize().
-    QCoreApplication::setOrganizationName("Moonlight Game Streaming Project");
-    QCoreApplication::setOrganizationDomain("moonlight-stream.com");
-    QCoreApplication::setApplicationName("Moonlight");
+    // GpuVM: its own settings, pairing identity and cache, apart from an installed Moonlight.
+    QCoreApplication::setOrganizationName("GpuVM");
+    QCoreApplication::setOrganizationDomain("gpuvm.alenj.dev");
+    QCoreApplication::setApplicationName("Viewer");
+
+    // GpuVM: --gpuvm-pipe and --gpuvm-token-env are taken out before Qt and the CLI parser see the arguments.
+    if (!GpuVM::Bridge::instance().parseArguments(argc, argv)) {
+        return 2;
+    }
 
     if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -755,6 +764,11 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
 
+    // GpuVM: the app shows the progress, errors and the panel; this process only streams.
+    if (GpuVM::Bridge::instance().enabled() && !GpuVM::Bridge::instance().start()) {
+        return 3;
+    }
+
 #ifdef Q_OS_DARWIN
     // macOS defaults "Keyboard navigation" to text fields and lists only, which
     // prevents Tab (and the gamepad navigation that synthesizes it) from moving
@@ -1001,6 +1015,21 @@ int main(int argc, char *argv[])
             QString appName = streamParser.getAppName();
             auto launcher   = new CliStartStream::Launcher(host, appName, preferences, &app);
             engine.rootContext()->setContextProperty("launcher", launcher);
+            if (GpuVM::Bridge::instance().enabled()) {
+                QObject::connect(launcher, &CliStartStream::Launcher::failed, [](QString message) {
+                    QJsonObject f;
+                    f["message"] = message;
+                    GpuVM::Bridge::instance().send("error", f);
+                    GpuVM::Bridge::instance().stop();
+                    QTimer::singleShot(200, qApp, [] { QCoreApplication::exit(1); });
+                });
+                // Upstream asks before closing another app running on the host; the dialog is hidden here.
+                QObject::connect(launcher, &CliStartStream::Launcher::appQuitRequired, [](QString) {
+                    GpuVM::Bridge::instance().send("app-running");
+                    GpuVM::Bridge::instance().stop();
+                    QTimer::singleShot(200, qApp, [] { QCoreApplication::exit(1); });
+                });
+            }
             break;
         }
     case GlobalCommandLineParser::QuitRequested:
@@ -1035,6 +1064,7 @@ int main(int argc, char *argv[])
     if (hasGUI) {
         engine.rootContext()->setContextProperty("initialView", initialView);
         engine.rootContext()->setContextProperty("runConfigChecks", commandLineParserResult == GlobalCommandLineParser::NormalStartRequested);
+        engine.rootContext()->setContextProperty("gpuvmHidden", GpuVM::Bridge::instance().enabled());
 
         // Load the main.qml file
         engine.load(QUrl(QStringLiteral("qrc:/gui/main.qml")));

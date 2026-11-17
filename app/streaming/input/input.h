@@ -168,6 +168,7 @@ private:
         KeyComboTogglePointerRegionLock,
         KeyComboQuitAndExit,
         KeyComboToggleKeyboardGrab,
+        KeyComboGpuVMPanel, // GpuVM: open or close the side panel
         KeyComboMax
     };
 

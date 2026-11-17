@@ -6,6 +6,10 @@
 #include <Limelight.h>
 #include "SDL_compat.h"
 #include "utils.h"
+#include "gpuvm/bridge.h"
+#include "gpuvm/sessionhooks.h"
+#include "gpuvm/viewport.h"
+#include <QJsonObject>
 
 #ifdef HAVE_FFMPEG
 #include "video/ffmpeg.h"
@@ -586,6 +590,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_AudioSampleCount(0),
       m_DropAudioEndTime(0)
 {
+    GpuVM::attachSession(this);
 }
 
 Session::~Session()
@@ -1843,7 +1848,7 @@ void Session::exec()
 #ifdef Q_OS_DARWIN
     std::string windowName = QString(m_Computer->name).toStdString();
 #else
-    std::string windowName = QString(m_Computer->name + " - Moonlight").toStdString();
+    std::string windowName = QString(m_Computer->name + " - GpuVM").toStdString();
 #endif
 
     m_Window = SDL_CreateWindow(windowName.c_str(),
@@ -1907,6 +1912,9 @@ void Session::exec()
     if (m_IsFullScreen) {
         SDL_SetWindowFullscreen(m_Window, m_FullScreenFlag);
     }
+
+    GpuVM::Bridge::instance().sessionStarted();
+    GpuVM::reportWindow(m_Window, m_IsFullScreen);
 
     bool needsFirstEnterCapture = false;
     bool needsPostDecoderCreationCapture = false;
@@ -2036,6 +2044,11 @@ void Session::exec()
                 m_InputHandler->setAdaptiveTriggers((uint16_t)(uintptr_t)event.user.data1,
                                                     (DualSenseOutputReport *)event.user.data2);
                 break;
+            case GpuVM::SDL_CODE_GPUVM_COMMAND:
+                if (handleGpuVMCommand((QJsonObject*)event.user.data1)) {
+                    goto DispatchDeferredCleanup;
+                }
+                break;
             default:
                 SDL_assert(false);
             }
@@ -2058,6 +2071,12 @@ void Session::exec()
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();
+                break;
+            case SDL_WINDOWEVENT_MOVED:
+            case SDL_WINDOWEVENT_SIZE_CHANGED:
+            case SDL_WINDOWEVENT_MINIMIZED:
+            case SDL_WINDOWEVENT_RESTORED:
+                GpuVM::reportWindow(m_Window, m_IsFullScreen);
                 break;
             }
 
@@ -2308,6 +2327,8 @@ void Session::exec()
     }
 
 DispatchDeferredCleanup:
+    GpuVM::Bridge::instance().sessionEnded();
+
     // Switch back to synchronous logging mode
     StreamUtils::exitAsyncLoggingMode();
 
@@ -2376,4 +2397,38 @@ DispatchDeferredCleanup:
     // When it is complete, it will release our s_ActiveSessionSemaphore
     // reference.
     QThreadPool::globalInstance()->start(new DeferredSessionCleanupTask(this));
+}
+
+// GpuVM: a command from the app (see gpuvm/bridge.h). Returns true when the session must end.
+bool Session::handleGpuVMCommand(QJsonObject* command)
+{
+    QScopedPointer<QJsonObject> owned(command);
+    QString type = command->value("type").toString();
+
+    if (type == "quit") {
+        return true;
+    }
+    else if (type == "capture") {
+        bool on = command->value("on").toBool();
+        if (!on) {
+            m_InputHandler->raiseAllKeys();
+        }
+        m_InputHandler->setCaptureActive(on);
+    }
+    else if (type == "focus") {
+        SDL_RaiseWindow(m_Window);
+    }
+    else if (type == "fullscreen") {
+        toggleFullscreen();
+        GpuVM::reportWindow(m_Window, m_IsFullScreen);
+    }
+    else if (type == "stats") {
+        m_OverlayManager.setOverlayState(Overlay::OverlayDebug, command->value("on").toBool());
+    }
+    else if (type == "inset") {
+        GpuVM::Viewport::setRightInset((float)command->value("fraction").toDouble(),
+                                       command->value("durationMs").toInt(0));
+        m_InputHandler->updatePointerRegionLock();
+    }
+    return false;
 }

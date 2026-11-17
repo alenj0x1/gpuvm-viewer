@@ -35,6 +35,11 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        // GpuVM: its app shows the progress and errors, this window stays hidden
+        if (gpuvmHidden) {
+            return
+        }
+
         // Show the window according to the user's preferences
         if (SystemProperties.hasDesktopEnvironment) {
             if (StreamingPreferences.uiDisplayMode == StreamingPreferences.UI_MAXIMIZED) {
@@ -368,9 +373,8 @@ ApplicationWindow {
                     updateButton.visible = true
                 }
 
+                // GpuVM: the viewer is updated with GpuVM, never from Moonlight's releases
                 Component.onCompleted: {
-                    AutoUpdateChecker.onUpdateAvailable.connect(updateAvailable)
-                    AutoUpdateChecker.start()
                 }
 
                 Keys.onDownPressed: {

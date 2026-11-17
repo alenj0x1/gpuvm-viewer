@@ -1,4 +1,5 @@
 #include "streaming/session.h"
+#include "gpuvm/bridge.h"
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -160,6 +161,16 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         quitExitEvent.type = SDL_QUIT;
         quitExitEvent.quit.timestamp = SDL_GetTicks();
         SDL_PushEvent(&quitExitEvent);
+        break;
+
+    case KeyComboGpuVMPanel:
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Detected GpuVM panel combo");
+        // The app opens or closes the panel; it asks for the input back or gives it here with "capture".
+        // It may take the foreground for the panel (games read the keyboard there).
+        GpuVM::Bridge::instance().allowAppForeground();
+        GpuVM::Bridge::instance().send("panel");
+        raiseAllKeys();
         break;
 
     case KeyComboToggleKeyboardGrab:

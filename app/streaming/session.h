@@ -11,6 +11,8 @@
 #include "audio/renderers/renderer.h"
 #include "video/overlaymanager.h"
 
+class QJsonObject;
+
 class SupportedVideoFormatList : public QList<int>
 {
 public:
@@ -166,6 +168,8 @@ private:
                              int& width, int& height);
 
     void toggleFullscreen();
+
+    bool handleGpuVMCommand(QJsonObject* command);
 
     void notifyMouseEmulationMode(bool enabled);
 

@@ -3,6 +3,7 @@
 #include <Limelight.h>
 #include "SDL_compat.h"
 #include "streaming/streamutils.h"
+#include "gpuvm/viewport.h"
 
 void SdlInputHandler::notifyMouseLeave()
 {
@@ -135,6 +136,7 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
         dst.h = windowHeight;
 
         // Use the stream and window sizes to determine the video region
+        GpuVM::Viewport::apply(&dst);
         StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
         mouseInVideoRegion = isMouseInVideoRegion(x, y, windowWidth, windowHeight);
@@ -276,6 +278,7 @@ bool SdlInputHandler::isMouseInVideoRegion(int mouseX, int mouseY, int windowWid
     dst.h = windowHeight;
 
     // Use the stream and window sizes to determine the video region
+    GpuVM::Viewport::apply(&dst);
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
     return (mouseX >= dst.x && mouseX <= dst.x + dst.w) &&
@@ -312,6 +315,7 @@ void SdlInputHandler::updatePointerRegionLock()
         SDL_GetWindowSize(m_Window, &dst.w, &dst.h);
 
         // Use the stream and window sizes to determine the video region
+        GpuVM::Viewport::apply(&dst);
         StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
         // SDL 2.0.18 lets us lock the cursor to a specific region
