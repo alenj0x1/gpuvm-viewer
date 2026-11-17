@@ -2515,12 +2515,40 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
         // never shows inside the app for a frame first.
         bool isFull = SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
         if (type == "reveal" && command->value("fullscreen").toBool() && !isFull) {
+            // Out of sight until the rebuilt renderer presents its first full-screen frame (the old picture showed
+            // at the old size inside the app for most of a second).
+            GpuVM::cloakUntilNextFrame(m_Window);
             toggleFullscreen();
+            GpuVM::uncloakOnNextFrame();
             isFull = SDL_GetWindowFlags(m_Window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP);
             GpuVM::reportWindow(m_Window);
         }
+#ifdef Q_OS_WIN32
+        {
+            RECT wr = {};
+            SDL_SysWMinfo wi;
+            SDL_VERSION(&wi.version);
+            if (SDL_GetWindowWMInfo(m_Window, &wi) && wi.subsystem == SDL_SYSWM_WINDOWS) {
+                GetWindowRect(wi.info.win.window, &wr);
+            }
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM: %s before show: full=%d rect=%ld,%ld %ldx%ld",
+                        type.toUtf8().constData(), isFull ? 1 : 0, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top);
+        }
+#endif
         SDL_ShowWindow(m_Window);
         SDL_RaiseWindow(m_Window);
+#ifdef Q_OS_WIN32
+        {
+            RECT wr = {};
+            SDL_SysWMinfo wi;
+            SDL_VERSION(&wi.version);
+            if (SDL_GetWindowWMInfo(m_Window, &wi) && wi.subsystem == SDL_SYSWM_WINDOWS) {
+                GetWindowRect(wi.info.win.window, &wr);
+            }
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM: after show: rect=%ld,%ld %ldx%ld", wr.left, wr.top,
+                        wr.right - wr.left, wr.bottom - wr.top);
+        }
+#endif
         if (isFull || m_Preferences->absoluteMouseMode) {
             m_InputHandler->setCaptureActive(true);
         }

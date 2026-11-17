@@ -8,6 +8,10 @@
 #include <atomic>
 
 #include <SDL_syswm.h>
+#ifdef Q_OS_WIN32
+#include <windows.h>
+#include <dwmapi.h>
+#endif
 
 namespace GpuVM {
 
@@ -87,6 +91,56 @@ void reportFirstFrame()
         return;
     }
     Bridge::instance().send("first-frame");
+}
+
+// The window hidden by cloakUntilNextFrame (s_Hidden), and the same once the old renderer is gone, so only a frame of
+// the new one lifts it (s_Cloaked).
+static std::atomic<quintptr> s_Hidden{0};
+static std::atomic<quintptr> s_Cloaked{0};
+
+void uncloakOnNextFrame()
+{
+    s_Cloaked = s_Hidden.load();
+}
+
+static void uncloak()
+{
+#ifdef Q_OS_WIN32
+    s_Cloaked = 0;
+    quintptr hwnd = s_Hidden.exchange(0);
+    if (hwnd != 0) {
+        BOOL off = FALSE;
+        DwmSetWindowAttribute((HWND)hwnd, DWMWA_CLOAK, &off, sizeof(off));
+    }
+#endif
+}
+
+void cloakUntilNextFrame(SDL_Window* window)
+{
+#ifdef Q_OS_WIN32
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+    if (!Bridge::instance().enabled() || !SDL_GetWindowWMInfo(window, &info) || info.subsystem != SDL_SYSWM_WINDOWS) {
+        return;
+    }
+    BOOL on = TRUE;
+    if (FAILED(DwmSetWindowAttribute(info.info.win.window, DWMWA_CLOAK, &on, sizeof(on)))) {
+        return;
+    }
+    s_Hidden = (quintptr)info.info.win.window;
+    // Never left hidden: a frame that doesn't come (no IDR yet) lifts it after 1.5 s anyway.
+    SDL_AddTimer(1500, [](Uint32, void*) -> Uint32 { uncloak(); return 0; }, nullptr);
+#else
+    Q_UNUSED(window);
+#endif
+}
+
+void framePresented()
+{
+    if (s_Cloaked.load() != 0) {
+        uncloak();
+    }
+    reportFirstFrame();
 }
 
 void reportStats(double receivedFps, double renderedFps, double networkDropPercent, double decodeMs,

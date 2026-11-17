@@ -405,7 +405,7 @@ void Pacer::renderFrame(AVFrame* frame)
     uint64_t afterRender = LiGetMicroseconds();
 
     // GpuVM: the first picture is on the screen (the app swaps its waiting view for the stream now)
-    GpuVM::reportFirstFrame();
+    GpuVM::framePresented();
 
     m_VideoStats->totalRenderTimeUs += (afterRender - beforeRender);
     m_VideoStats->renderedFrames++;
