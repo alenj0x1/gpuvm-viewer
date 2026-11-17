@@ -56,6 +56,10 @@ public:
     // QSettings is created. Moves what earlier viewers kept in HKCU\Software\GpuVM\Viewer once.
     static void prepareStorage();
 
+    // Drops this process to Low integrity if it runs higher (the pairing run starts at Medium): everything that
+    // reads the LocalLow folder, which a Low viewer can write, is then Low too. False if it could not.
+    static bool lowerIntegrity();
+
     // Connects and starts the reader and writer threads.
     bool start();
     // Sends what is queued (up to ~500 ms), then closes the pipe and waits for both threads. Main thread;

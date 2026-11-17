@@ -22,6 +22,8 @@
 #ifdef Q_OS_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+// Token calls (lowerIntegrity), kept here so upstream's app.pro needs no change.
+#pragma comment(lib, "advapi32.lib")
 #endif
 
 namespace GpuVM {
@@ -107,6 +109,42 @@ QString Bridge::dataDirectory()
 #endif
 }
 
+bool Bridge::lowerIntegrity()
+{
+#ifdef Q_OS_WIN32
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_ADJUST_DEFAULT, &token)) {
+        return false;
+    }
+    bool ok = false;
+    BYTE current[64];
+    DWORD size = 0;
+    if (GetTokenInformation(token, TokenIntegrityLevel, current, sizeof(current), &size)) {
+        PSID sid = reinterpret_cast<TOKEN_MANDATORY_LABEL*>(current)->Label.Sid;
+        DWORD level = *GetSidSubAuthority(sid, *GetSidSubAuthorityCount(sid) - 1);
+        if (level <= SECURITY_MANDATORY_LOW_RID) {
+            ok = true;
+        }
+        else {
+            // S-1-16-4096. A process may always lower its own level (never raise it).
+            SID_IDENTIFIER_AUTHORITY authority = SECURITY_MANDATORY_LABEL_AUTHORITY;
+            PSID low = nullptr;
+            if (AllocateAndInitializeSid(&authority, 1, SECURITY_MANDATORY_LOW_RID, 0, 0, 0, 0, 0, 0, 0, &low)) {
+                TOKEN_MANDATORY_LABEL label = {};
+                label.Label.Sid = low;
+                label.Label.Attributes = SE_GROUP_INTEGRITY;
+                ok = SetTokenInformation(token, TokenIntegrityLevel, &label, sizeof(label) + GetLengthSid(low)) != FALSE;
+                FreeSid(low);
+            }
+        }
+    }
+    CloseHandle(token);
+    return ok;
+#else
+    return true;
+#endif
+}
+
 void Bridge::prepareStorage()
 {
     QString dir = dataDirectory();
@@ -117,6 +155,8 @@ void Bridge::prepareStorage()
     std::wstring nativeTemp = QDir::toNativeSeparators(temp).toStdWString();
     _wputenv_s(L"TEMP", nativeTemp.c_str());
     _wputenv_s(L"TMP", nativeTemp.c_str());
+    // Compiled QML is never cached on disk: the QML always comes from the install folder, which only administrators can write.
+    _wputenv_s(L"QML_DISABLE_DISK_CACHE", L"1");
 #endif
 
     // <dir>\GpuVM\Viewer.ini (organization\application), for the pairing run (Medium) and the streams (Low) alike.

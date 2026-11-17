@@ -446,6 +446,11 @@ int main(int argc, char *argv[])
     if (GpuVM::Bridge::instance().quiet()) {
         // GpuVM (stream and pair): settings, pairing identity, caches and logs under LocalLow\GpuVM\Viewer, the
         // one place the viewer can write when GpuVM runs it at Low integrity. Before any QSettings exists.
+        // The pairing run starts at Medium: it drops to Low first, so nothing above Low reads what a Low viewer
+        // may have written there. It never goes on at a higher level.
+        if (!GpuVM::Bridge::lowerIntegrity()) {
+            return 3;
+        }
         GpuVM::Bridge::prepareStorage();
     }
     else if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
