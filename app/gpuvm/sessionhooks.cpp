@@ -12,7 +12,9 @@
 #include <windows.h>
 #include <dwmapi.h>
 #include <ole2.h>
+#include <shellapi.h>
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "shell32.lib")
 #endif
 
 namespace GpuVM {
@@ -117,9 +119,22 @@ static void notifyDrags(HWND hwnd)
     if (hwnd == s_Registered) {
         return;
     }
+    // SDL accepts dropped files by default (DragAcceptFiles, the old WM_DROPFILES path): Windows would hand the paths
+    // to this window and accept the drop. Turned off, so only the notifier below sees a drag (lab 043).
+    for (Uint32 type : { SDL_DROPFILE, SDL_DROPTEXT, SDL_DROPBEGIN, SDL_DROPCOMPLETE }) {
+        SDL_EventState(type, SDL_DISABLE);
+    }
+    DragAcceptFiles(hwnd, FALSE);
     // Qt already initialized OLE on this (the main) thread; a second call only adds a reference.
-    OleInitialize(nullptr);
-    if (SUCCEEDED(RegisterDragDrop(hwnd, &s_Notifier))) {
+    HRESULT ole = OleInitialize(nullptr);
+    HRESULT reg = RegisterDragDrop(hwnd, &s_Notifier);
+    if (reg == DRAGDROP_E_ALREADYREGISTERED) {
+        RevokeDragDrop(hwnd);
+        reg = RegisterDragDrop(hwnd, &s_Notifier);
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM: drag notifier on the stream window (OLE 0x%08lx, register 0x%08lx)",
+                (unsigned long)ole, (unsigned long)reg);
+    if (SUCCEEDED(reg)) {
         s_Registered = hwnd;
     }
 }
