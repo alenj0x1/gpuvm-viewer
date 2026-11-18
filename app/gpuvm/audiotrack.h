@@ -31,6 +31,10 @@ public:
     void push(const uint8_t* packet, size_t size, int64_t timeUs, std::vector<AacFrame>& out);
     void finish(std::vector<AacFrame>& out);
 
+    // Silence from timeUs for this long: the machine sends no sound while it is quiet, and a sound track with holes
+    // (or none at all) is something Windows' players refuse.
+    void silence(int64_t timeUs, int64_t durationUs, std::vector<AacFrame>& out);
+
     // How far Windows' AAC encoder delays the sound (its priming samples): its frames are stamped this much earlier
     // so the sound stays on the picture. Measured in lab 044.
     static constexpr int64_t kEncoderDelayUs = 0;

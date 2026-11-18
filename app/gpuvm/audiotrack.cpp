@@ -70,6 +70,25 @@ void AudioTrack::push(const uint8_t* packet, size_t size, int64_t timeUs, std::v
     }
 }
 
+void AudioTrack::silence(int64_t timeUs, int64_t durationUs, std::vector<AacFrame>& out)
+{
+    if (m_Decoder == nullptr || durationUs <= 0) {
+        return;
+    }
+    // In 20 ms pieces, each stamped at its own time.
+    const int chunk = m_In.sampleRate / 50;
+    std::vector<int16_t> zeros((size_t)chunk * (size_t)m_Out.channels, 0);
+    int64_t frames = durationUs * m_In.sampleRate / 1000000;
+    for (int64_t done = 0; done < frames; done += chunk) {
+        int n = (int)std::min<int64_t>(chunk, frames - done);
+        size_t before = out.size();
+        m_Encoder.encode(zeros.data(), n, timeUs + done * 1000000 / m_In.sampleRate, out);
+        for (size_t i = before; i < out.size(); i++) {
+            out[i].timeUs -= kEncoderDelayUs;
+        }
+    }
+}
+
 void AudioTrack::finish(std::vector<AacFrame>& out)
 {
     size_t before = out.size();

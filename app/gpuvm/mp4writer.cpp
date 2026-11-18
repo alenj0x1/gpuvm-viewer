@@ -774,7 +774,11 @@ bool Mp4Writer::addAudio(const uint8_t* data, size_t size, int64_t timeUs)
     }
     int64_t rel = timeUs - m_StartUs;
     if (rel < 0) {
+        m_AudioCounts.early++;
         return true;
+    }
+    if (m_AudioCounts.kept == 0) {
+        m_AudioCounts.firstRelUs = rel;
     }
     uint64_t rate = (uint64_t)m_Audio.sampleRate;
     uint64_t expected = (uint64_t)rel * rate / 1000000;
@@ -786,6 +790,7 @@ bool Mp4Writer::addAudio(const uint8_t* data, size_t size, int64_t timeUs)
     }
     else if (expected > m_AudioNext + slack) {
         // Audio stopped for a while: the gap stays silent instead of pulling the rest ahead of the picture.
+        m_AudioCounts.gaps++;
         if (!m_AudioSamples.empty()) {
             m_AudioSamples.back().duration += (uint32_t)(expected - m_AudioNext);
         }
@@ -795,8 +800,10 @@ bool Mp4Writer::addAudio(const uint8_t* data, size_t size, int64_t timeUs)
         m_AudioNext = expected;
     }
     else if (expected + slack < m_AudioNext) {
+        m_AudioCounts.ahead++;
         return true;  // far ahead of its time (a burst after a stall): dropped
     }
+    m_AudioCounts.kept++;
     if (m_AudioSamples.empty()) {
         m_AudioFragmentStart = m_AudioNext;
     }

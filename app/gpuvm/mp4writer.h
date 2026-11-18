@@ -62,6 +62,11 @@ public:
     // Writes what is pending, the duration and the key frame index, and closes the file.
     bool close();
 
+    // What happened to the sound (for the viewer's log): kept, dropped before the picture began, dropped far ahead
+    // of its time, gaps filled with silence.
+    struct AudioCounts { int kept = 0, early = 0, ahead = 0, gaps = 0; int64_t firstRelUs = 0; };
+    const AudioCounts& audioCounts() const { return m_AudioCounts; }
+
     bool started() const { return m_Started; }
     uint64_t bytes() const { return m_Offset; }
     int64_t durationMs() const;
@@ -115,6 +120,7 @@ private:
     bool m_AudioAnchored = false;
 
     std::vector<KeyEntry> m_Keys;
+    AudioCounts m_AudioCounts;
 };
 
 }

@@ -171,6 +171,7 @@ SOURCES += \
     gpuvm/bridge.cpp \
     gpuvm/capture.cpp \
     gpuvm/mp4writer.cpp \
+    gpuvm/recordfile.cpp \
     gpuvm/sessionhooks.cpp \
     gpuvm/viewport.cpp \
     backend/nvaddress.cpp \
@@ -219,6 +220,7 @@ HEADERS += \
     gpuvm/bridge.h \
     gpuvm/capture.h \
     gpuvm/mp4writer.h \
+    gpuvm/recordfile.h \
     gpuvm/sessionhooks.h \
     gpuvm/viewport.h \
     SDL_compat.h \

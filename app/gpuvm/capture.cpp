@@ -3,7 +3,7 @@
 #endif
 
 #include "capture.h"
-#include "audiotrack.h"
+#include "recordfile.h"
 #include "bridge.h"
 #include "mp4writer.h"
 #include "viewport.h"
@@ -461,6 +461,25 @@ void Capture::onVideoFrame(const _DECODE_UNIT* unit)
     }
     const DECODE_UNIT* du = (const DECODE_UNIT*)unit;
     Impl* d = impl();
+    // How long this takes on the decoder's thread (lab 044): slow calls are counted and logged once a second.
+    struct Timing {
+        Uint64 start = SDL_GetPerformanceCounter();
+        ~Timing()
+        {
+            static Uint64 lastLog = 0;
+            static int slow = 0;
+            static double worst = 0;
+            double ms = (SDL_GetPerformanceCounter() - start) * 1000.0 / SDL_GetPerformanceFrequency();
+            if (ms > 2.0) { slow++; worst = std::max(worst, ms); }
+            Uint64 now = SDL_GetTicks64();
+            if (slow > 0 && now - lastLog > 1000) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "GpuVM capture: %d slow frame copies, worst %.1f ms", slow, worst);
+                lastLog = now;
+                slow = 0;
+                worst = 0;
+            }
+        }
+    } timing;
     auto data = std::make_shared<std::vector<uint8_t>>();
     data->reserve((size_t)du->fullLength);
     for (PLENTRY e = du->bufferList; e != nullptr; e = e->next) {
@@ -529,6 +548,7 @@ void Capture::onVideoFrame(const _DECODE_UNIT* unit)
         }
     }
     if (askKey) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM capture: asking for a key frame");
         LiRequestIdrFrame();
     }
     if (tooSlow && m_Recording.exchange(false)) {
@@ -583,7 +603,8 @@ static QString latestThumb(Capture::Impl* d)
 
 namespace {
 
-// Writes packets into one MP4 (with its sound as AAC). Lives on the thread that writes.
+// One MP4 in the Captures folder (RecordFile: picture, sound, silence), announced to the app when finished. Lives on
+// the thread that writes.
 class FileOut
 {
 public:
@@ -592,45 +613,27 @@ public:
         m_Name = newName(prefix, "mp4");
         m_Part = capturesDir() + "/" + m_Name + ".part";
         m_Video = video;
-        m_HasAudio = opus != nullptr && m_Track.open(*opus);
-        return m_Writer.open(QDir::toNativeSeparators(m_Part).toStdWString(), video, m_HasAudio ? &m_Track.info() : nullptr);
+        return m_File.open(QDir::toNativeSeparators(m_Part).toStdWString(), video, opus);
     }
     bool add(const Packet& p)
     {
-        if (p.video) {
-            return m_Writer.addVideo(p.data->data(), p.data->size(), p.timeUs, p.key);
-        }
-        if (!m_HasAudio) {
-            return true;
-        }
-        m_Frames.clear();
-        m_Track.push(p.data->data(), p.data->size(), p.timeUs, m_Frames);
-        for (const AacFrame& f : m_Frames) {
-            m_Writer.addAudio(f.data.data(), f.data.size(), f.timeUs);
-        }
-        return m_Writer.error().empty();
+        return p.video ? m_File.addVideo(p.data->data(), p.data->size(), p.timeUs, p.key)
+                       : m_File.addAudio(p.data->data(), p.data->size(), p.timeUs);
     }
     // Finishes the file and announces it (with a small picture for the panel); false (and nothing announced) if it
     // failed or had no picture.
     bool finish(const char* kind, const QString& thumb)
     {
-        if (m_HasAudio) {
-            m_Frames.clear();
-            m_Track.finish(m_Frames);
-            for (const AacFrame& f : m_Frames) {
-                m_Writer.addAudio(f.data.data(), f.data.size(), f.timeUs);
-            }
-        }
-        bool started = m_Writer.started();
-        int64_t ms = m_Writer.durationMs();
-        bool ok = m_Writer.close() && started;
+        bool started = m_File.started();
+        bool ok = m_File.close() && started;
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM capture: %s %s", kind, m_File.summary().c_str());
         if (!ok) {
             QFile::remove(m_Part);
             return !started;  // an empty recording (stopped before the first key frame) is not an error
         }
         QJsonObject f;
         f["kind"] = kind;
-        f["durationMs"] = (double)ms;
+        f["durationMs"] = (double)m_File.durationMs();
         f["width"] = m_Video.width;
         f["height"] = m_Video.height;
         f["thumb"] = thumb;
@@ -638,12 +641,9 @@ public:
     }
 
 private:
-    Mp4Writer m_Writer;
-    AudioTrack m_Track;
+    RecordFile m_File;
     Mp4VideoInfo m_Video;
-    bool m_HasAudio = false;
     QString m_Name, m_Part;
-    std::vector<AacFrame> m_Frames;
 };
 
 }
