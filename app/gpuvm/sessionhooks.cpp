@@ -11,6 +11,10 @@
 #ifdef Q_OS_WIN32
 #include <windows.h>
 #include <dwmapi.h>
+#include <ole2.h>
+#include <shellapi.h>
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "shell32.lib")
 #endif
 
 namespace GpuVM {
@@ -68,6 +72,74 @@ void attachSession(Session* session)
     }, Qt::QueuedConnection);
 }
 
+#ifdef Q_OS_WIN32
+// Files dragged over the picture: the viewer only tells the app that a drag is over it ("drag", no fields) and
+// never accepts the drop or reads what is dragged. The app then shows its own window over the picture, which
+// takes the drop with the real paths from Windows (lab 043). So a viewer taken over by its streaming host can't
+// name files of this PC for the app to copy: at most it can make the app show its drop area.
+class DragNotifier final : public IDropTarget
+{
+public:
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override
+    {
+        if (riid == IID_IUnknown || riid == IID_IDropTarget) {
+            *out = static_cast<IDropTarget*>(this);
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    // A single static object that lives as long as the process: no reference counting needed.
+    ULONG STDMETHODCALLTYPE AddRef() override { return 2; }
+    ULONG STDMETHODCALLTYPE Release() override { return 1; }
+
+    HRESULT STDMETHODCALLTYPE DragEnter(IDataObject*, DWORD, POINTL, DWORD* effect) override
+    {
+        Bridge::instance().send("drag");
+        *effect = DROPEFFECT_NONE;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL, DWORD* effect) override
+    {
+        *effect = DROPEFFECT_NONE;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragLeave() override { return S_OK; }
+    HRESULT STDMETHODCALLTYPE Drop(IDataObject*, DWORD, POINTL, DWORD* effect) override
+    {
+        *effect = DROPEFFECT_NONE;
+        return S_OK;
+    }
+};
+
+static void notifyDrags(HWND hwnd)
+{
+    static DragNotifier s_Notifier;
+    static HWND s_Registered = nullptr;
+    if (hwnd == s_Registered) {
+        return;
+    }
+    // SDL accepts dropped files by default (DragAcceptFiles, the old WM_DROPFILES path): Windows would hand the paths
+    // to this window and accept the drop. Turned off, so only the notifier below sees a drag (lab 043).
+    for (Uint32 type : { SDL_DROPFILE, SDL_DROPTEXT, SDL_DROPBEGIN, SDL_DROPCOMPLETE }) {
+        SDL_EventState(type, SDL_DISABLE);
+    }
+    DragAcceptFiles(hwnd, FALSE);
+    // Qt already initialized OLE on this (the main) thread; a second call only adds a reference.
+    HRESULT ole = OleInitialize(nullptr);
+    HRESULT reg = RegisterDragDrop(hwnd, &s_Notifier);
+    if (reg == DRAGDROP_E_ALREADYREGISTERED) {
+        RevokeDragDrop(hwnd);
+        reg = RegisterDragDrop(hwnd, &s_Notifier);
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM: drag notifier on the stream window (OLE 0x%08lx, register 0x%08lx)",
+                (unsigned long)ole, (unsigned long)reg);
+    if (SUCCEEDED(reg)) {
+        s_Registered = hwnd;
+    }
+}
+#endif
+
 void reportWindow(SDL_Window* window)
 {
     Bridge& bridge = Bridge::instance();
@@ -80,6 +152,9 @@ void reportWindow(SDL_Window* window)
     if (SDL_GetWindowWMInfo(window, &info) && info.subsystem == SDL_SYSWM_WINDOWS) {
         // As a number: HWNDs are 32-bit values even on 64-bit Windows, so a double holds them exactly.
         f["hwnd"] = (double)(quintptr)info.info.win.window;
+#ifdef Q_OS_WIN32
+        notifyDrags(info.info.win.window);
+#endif
     }
     f["fullScreen"] = (SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) != 0;
     Bridge::instance().send("window", f);
