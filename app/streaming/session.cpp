@@ -7,6 +7,7 @@
 #include "SDL_compat.h"
 #include "utils.h"
 #include "gpuvm/bridge.h"
+#include "gpuvm/capture.h"
 #include "gpuvm/sessionhooks.h"
 #include "gpuvm/viewport.h"
 #include <QJsonObject>
@@ -2389,6 +2390,8 @@ void Session::exec()
     }
 
 DispatchDeferredCleanup:
+    // GpuVM: a recording in progress is finished and handed to the app before the connection closes
+    GpuVM::Capture::instance().sessionEnded();
     GpuVM::Bridge::instance().sessionEnded();
 
     // Switch back to synchronous logging mode
@@ -2563,6 +2566,20 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
         GpuVM::Viewport::setRightInset((float)command->value("fraction").toDouble(),
                                        command->value("durationMs").toInt(0));
         m_InputHandler->updatePointerRegionLock();
+    }
+    // Screenshots and recordings (gpuvm/capture.h)
+    else if (type == "screenshot") {
+        GpuVM::Capture::instance().screenshot();
+    }
+    else if (type == "record") {
+        GpuVM::Capture::instance().setRecording(command->value("on").toBool());
+    }
+    else if (type == "replay-save") {
+        GpuVM::Capture::instance().saveReplay();
+    }
+    else if (type == "capture-setup") {
+        GpuVM::Capture::instance().configure(command->value("replay").toBool(), command->value("seconds").toInt(30),
+                                             command->value("lang").toString());
     }
     return false;
 }

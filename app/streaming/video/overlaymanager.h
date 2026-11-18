@@ -10,6 +10,7 @@ namespace Overlay {
 enum OverlayType {
     OverlayDebug,
     OverlayStatusUpdate,
+    OverlayGpuVMCapture, // GpuVM: the recording's time and short notices, a pill at the picture's top right
     OverlayMax
 };
 
@@ -42,6 +43,7 @@ public:
 private:
     void notifyOverlayUpdated(OverlayType type);
     SDL_Surface* RenderTextOutlinedWrapped(TTF_Font* font, const char* text, SDL_Color textColor, SDL_Color outlineColor, int outlineWidth, int wrapWidth);
+    SDL_Surface* renderGpuVMPill(TTF_Font* font, const char* text);
 
     struct {
         bool enabled;

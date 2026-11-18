@@ -49,6 +49,8 @@ private:
     void bindColorConversion(bool frameChanged, AVFrame* frame);
     void bindVideoVertexBuffer(bool frameChanged, AVFrame* frame);
     void renderVideo(AVFrame* frame);
+    // GpuVM: copies the decoded frame to the CPU for a screenshot (gpuvm/capture.h).
+    void gpuvmGrabFrame(AVFrame* frame);
     bool checkDecoderSupport(IDXGIAdapter* adapter);
     bool createDeviceByAdapterIndex(int adapterIndex, bool* adapterNotFound = nullptr);
     bool setupSharedDevice(IDXGIAdapter1* adapter);

@@ -1,6 +1,8 @@
 #include "overlaymanager.h"
 #include "path.h"
 
+#include <cmath>
+
 using namespace Overlay;
 
 OverlayManager::OverlayManager() :
@@ -14,6 +16,14 @@ OverlayManager::OverlayManager() :
 
     m_Overlays[OverlayType::OverlayStatusUpdate].color = {0xCC, 0x00, 0x00, 0xFF};
     m_Overlays[OverlayType::OverlayStatusUpdate].fontSize = 36;
+
+    // GpuVM: sized to the screen (about 20 px at 1080p), in the app's text color.
+    {
+        SDL_DisplayMode mode = {};
+        int height = SDL_GetCurrentDisplayMode(0, &mode) == 0 && mode.h > 0 ? mode.h : 1080;
+        m_Overlays[OverlayType::OverlayGpuVMCapture].color = {0xEB, 0xE8, 0xE1, 0xFF};
+        m_Overlays[OverlayType::OverlayGpuVMCapture].fontSize = qBound(16, height / 54, 48);
+    }
 
     // While TTF will usually not be initialized here, it is valid for that not to
     // be the case, since Session destruction is deferred and could overlap with
@@ -122,6 +132,19 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
         return;
     }
 
+    // GpuVM: the capture pill uses Windows' own UI font (read-only, in the Windows folder), like the app around it.
+    if (type == OverlayGpuVMCapture && m_Overlays[type].font == nullptr) {
+#ifdef Q_OS_WIN32
+        const char* fonts[] = { "C:\\Windows\\Fonts\\seguisb.ttf", "C:\\Windows\\Fonts\\segoeui.ttf" };
+        for (const char* path : fonts) {
+            m_Overlays[type].font = TTF_OpenFont(path, m_Overlays[type].fontSize);
+            if (m_Overlays[type].font != nullptr) {
+                break;
+            }
+        }
+#endif
+    }
+
     // Construct the required font to render the overlay
     if (m_Overlays[type].font == nullptr) {
         if (m_FontData.isEmpty()) {
@@ -147,15 +170,15 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
     // Exchange the old surface with the new one
     SDL_Surface* oldSurface = (SDL_Surface*)SDL_AtomicSetPtr(
         (void**)&m_Overlays[type].surface,
-        m_Overlays[type].enabled ?
+        !m_Overlays[type].enabled ? nullptr :
+        type == OverlayGpuVMCapture ? renderGpuVMPill(m_Overlays[type].font, m_Overlays[type].text) :
             // The _Wrapped variant is required for line breaks to work
             RenderTextOutlinedWrapped(m_Overlays[type].font,
                                       m_Overlays[type].text,
                                       m_Overlays[type].color,
                                       {0, 0, 0, 255},
                                       4,
-                                      1024)
-            : nullptr);
+                                      1024));
 
     // Notify the renderer
     m_Renderer->notifyOverlayUpdated(type);
@@ -164,6 +187,62 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
     if (oldSurface != nullptr) {
         SDL_FreeSurface(oldSurface);
     }
+}
+
+// GpuVM: a graphite pill with the text (and, for a recording, a red dot before it). Text starting with \x01 gets the
+// dot. Straight alpha, ARGB8888 like the other overlays.
+SDL_Surface* OverlayManager::renderGpuVMPill(TTF_Font* font, const char* text)
+{
+    if (text == nullptr || text[0] == '\0') {
+        return nullptr;
+    }
+    bool dot = text[0] == '\x01';
+    const char* label = dot ? text + 1 : text;
+    SDL_Surface* rendered = TTF_RenderUTF8_Blended(font, label, m_Overlays[OverlayGpuVMCapture].color);
+    if (rendered == nullptr) {
+        return nullptr;
+    }
+    SDL_Surface* glyphs = SDL_ConvertSurfaceFormat(rendered, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_FreeSurface(rendered);
+    if (glyphs == nullptr) {
+        return nullptr;
+    }
+    int h = glyphs->h + glyphs->h / 2;
+    float radius = h / 2.0f;
+    int padX = h / 2;
+    int dotD = dot ? h * 9 / 25 : 0;
+    int gap = dot ? h * 7 / 25 : 0;
+    int w = padX * 2 + dotD + gap + glyphs->w;
+    SDL_Surface* pill = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (pill == nullptr) {
+        SDL_FreeSurface(glyphs);
+        return nullptr;
+    }
+    float dotX = padX + dotD / 2.0f, dotR = dotD / 2.0f, cy = h / 2.0f;
+    for (int y = 0; y < h; y++) {
+        Uint32* row = (Uint32*)((Uint8*)pill->pixels + y * pill->pitch);
+        for (int x = 0; x < w; x++) {
+            float px = x + 0.5f, py = y + 0.5f;
+            // Distance to the capsule's center line, antialiased over one pixel.
+            float sx = qBound(radius, px, (float)w - radius);
+            float dist = std::sqrt((px - sx) * (px - sx) + (py - cy) * (py - cy));
+            float cover = qBound(0.0f, radius - dist + 0.5f, 1.0f);
+            float a = 0.86f * cover;
+            float r = 0x1c, g = 0x1c, b = 0x1c;
+            if (dot) {
+                float dd = std::sqrt((px - dotX) * (px - dotX) + (py - cy) * (py - cy));
+                float dc = qBound(0.0f, dotR - dd + 0.5f, 1.0f);
+                r += (0xe5 - r) * dc; g += (0x48 - g) * dc; b += (0x3f - b) * dc;
+                a = a + (cover - a) * dc;
+            }
+            row[x] = ((Uint32)(a * 255.0f + 0.5f) << 24) | ((Uint32)r << 16) | ((Uint32)g << 8) | (Uint32)b;
+        }
+    }
+    SDL_SetSurfaceBlendMode(glyphs, SDL_BLENDMODE_BLEND);
+    SDL_Rect at = { padX + dotD + gap, (h - glyphs->h) / 2, glyphs->w, glyphs->h };
+    SDL_BlitSurface(glyphs, nullptr, pill, &at);
+    SDL_FreeSurface(glyphs);
+    return pill;
 }
 
 SDL_Surface* OverlayManager::RenderTextOutlinedWrapped(TTF_Font* font, const char* text, SDL_Color textColor, SDL_Color outlineColor, int outlineWidth, int wrapWidth) {

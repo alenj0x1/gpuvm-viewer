@@ -1,5 +1,6 @@
 #include "streaming/session.h"
 #include "gpuvm/bridge.h"
+#include "gpuvm/capture.h"
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -179,6 +180,18 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         GpuVM::Bridge::instance().allowAppForeground();
         GpuVM::Bridge::instance().send("home");
         raiseAllKeys();
+        break;
+
+    case KeyComboGpuVMScreenshot:
+        GpuVM::Capture::instance().screenshot();
+        break;
+
+    case KeyComboGpuVMRecord:
+        GpuVM::Capture::instance().toggleRecording();
+        break;
+
+    case KeyComboGpuVMReplay:
+        GpuVM::Capture::instance().saveReplay();
         break;
 
     case KeyComboToggleKeyboardGrab:

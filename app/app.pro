@@ -166,7 +166,11 @@ macx {
 }
 
 SOURCES += \
+    gpuvm/aacencoder.cpp \
+    gpuvm/audiotrack.cpp \
     gpuvm/bridge.cpp \
+    gpuvm/capture.cpp \
+    gpuvm/mp4writer.cpp \
     gpuvm/sessionhooks.cpp \
     gpuvm/viewport.cpp \
     backend/nvaddress.cpp \
@@ -210,7 +214,11 @@ SOURCES += \
     wm.cpp
 
 HEADERS += \
+    gpuvm/aacencoder.h \
+    gpuvm/audiotrack.h \
     gpuvm/bridge.h \
+    gpuvm/capture.h \
+    gpuvm/mp4writer.h \
     gpuvm/sessionhooks.h \
     gpuvm/viewport.h \
     SDL_compat.h \

@@ -9,6 +9,8 @@
 
 #include <Limelight.h>
 
+#include "gpuvm/capture.h"
+
 #define TRY_INIT_RENDERER(renderer, opusConfig)        \
 {                                                      \
     IAudioRenderer* __renderer = new renderer();       \
@@ -134,6 +136,8 @@ int Session::arInit(int /* audioConfiguration */,
                     void* /* arContext */, int /* arFlags */)
 {
     SDL_memcpy(&s_ActiveSession->m_OriginalAudioConfig, opusConfig, sizeof(*opusConfig));
+    // GpuVM: recordings decode the same Opus layout themselves
+    GpuVM::Capture::instance().setAudioConfig(opusConfig);
     s_ActiveSession->initializeAudioRenderer();
     return 0;
 }
@@ -150,6 +154,9 @@ void Session::arCleanup()
 void Session::arDecodeAndPlaySample(char* sampleData, int sampleLength)
 {
     int samplesDecoded;
+
+    // GpuVM: every packet as it arrives, for a recording or the last seconds (also while muted here)
+    GpuVM::Capture::instance().onAudioPacket(sampleData, sampleLength);
 
 #ifndef STEAM_LINK
     // Set this thread to high priority to reduce the chance of missing
