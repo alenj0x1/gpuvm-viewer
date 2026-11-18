@@ -1,3 +1,9 @@
+# GpuVM viewer
+
+This is the streaming viewer of [GpuVM](https://github.com/alenj0x1/gpuvm), a fork of [Moonlight PC](https://github.com/moonlight-stream/moonlight-qt) under the same GPL-3.0 license. The GpuVM app starts it to show a virtual machine's picture inside its own window: it talks to the app over a private pipe, runs at Low integrity, and only streams (no host list or settings screens). The changes live on the `gpuvm` branch, mostly in `app/gpuvm/`, with a few calls from upstream files. Build it as upstream Moonlight; everything below is upstream's README.
+
+---
+
 # Moonlight PC
 
 [Moonlight PC](https://moonlight-stream.org) is an open source PC client for NVIDIA GameStream and [Sunshine](https://github.com/LizardByte/Sunshine).
