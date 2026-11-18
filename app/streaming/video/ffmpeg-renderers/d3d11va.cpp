@@ -6,6 +6,7 @@
 #include "path.h"
 #include "utils.h"
 #include "gpuvm/bridge.h"
+#include "gpuvm/capture.h"
 #include "gpuvm/viewport.h"
 
 #include "streaming/streamutils.h"
@@ -781,6 +782,11 @@ void D3D11VARenderer::renderFrame(AVFrame* frame)
     // Render our video frame with the aspect-ratio adjusted viewport
     renderVideo(frame);
 
+    // GpuVM: a screenshot takes this frame as decoded (before scaling, overlays or the panel)
+    if (GpuVM::Capture::instance().screenshotWanted()) {
+        gpuvmGrabFrame(frame);
+    }
+
     // Render overlays on top of the video stream
     for (int i = 0; i < Overlay::OverlayMax; i++) {
         renderOverlay((Overlay::OverlayType)i);
@@ -1102,6 +1108,65 @@ void D3D11VARenderer::renderVideo(AVFrame* frame)
     }
 }
 
+// GpuVM: the decoded frame (NV12 or P010) copied to a staging texture and read back once, on the render thread with
+// the context lock held. A screenshot costs this frame one GPU copy and one wait for it (lab 044).
+void D3D11VARenderer::gpuvmGrabFrame(AVFrame* frame)
+{
+    GpuVM::Capture& capture = GpuVM::Capture::instance();
+    D3D11_TEXTURE2D_DESC desc;
+    m_RenderSharedTextureArray->GetDesc(&desc);
+    if (desc.Format != DXGI_FORMAT_NV12 && desc.Format != DXGI_FORMAT_P010) {
+        capture.screenshotFailed("format");
+        return;
+    }
+    D3D11_TEXTURE2D_DESC stagingDesc = {};
+    stagingDesc.Width = desc.Width;
+    stagingDesc.Height = desc.Height;
+    stagingDesc.MipLevels = 1;
+    stagingDesc.ArraySize = 1;
+    stagingDesc.Format = desc.Format;
+    stagingDesc.SampleDesc.Count = 1;
+    stagingDesc.Usage = D3D11_USAGE_STAGING;
+    stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> staging;
+    if (FAILED(m_RenderDevice->CreateTexture2D(&stagingDesc, nullptr, &staging))) {
+        capture.screenshotFailed("gpu");
+        return;
+    }
+    UINT slice = (UINT)(intptr_t)frame->data[1];
+    m_RenderDeviceContext->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, m_RenderSharedTextureArray.Get(),
+                                                 D3D11CalcSubresource(0, slice, desc.MipLevels), nullptr);
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    if (FAILED(m_RenderDeviceContext->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        capture.screenshotFailed("gpu");
+        return;
+    }
+    auto planes = std::make_unique<GpuVM::FramePlanes>();
+    planes->width = frame->width;
+    planes->height = frame->height;
+    planes->tenBit = desc.Format == DXGI_FORMAT_P010;
+    planes->colorspace = frame->colorspace;
+    planes->fullRange = frame->color_range == AVCOL_RANGE_JPEG;
+    planes->pq = frame->color_trc == AVCOL_TRC_SMPTE2084;
+    int bps = planes->tenBit ? 2 : 1;
+    size_t lumaRow = (size_t)frame->width * bps;
+    size_t chromaRow = (size_t)((frame->width + 1) / 2) * 2 * bps;
+    int chromaRows = (frame->height + 1) / 2;
+    planes->luma.resize(lumaRow * frame->height);
+    planes->chroma.resize(chromaRow * chromaRows);
+    const uint8_t* base = (const uint8_t*)mapped.pData;
+    for (int y = 0; y < frame->height; y++) {
+        memcpy(&planes->luma[y * lumaRow], base + (size_t)y * mapped.RowPitch, lumaRow);
+    }
+    // The chroma plane follows the whole (padded) luma plane.
+    const uint8_t* uv = base + (size_t)mapped.RowPitch * desc.Height;
+    for (int y = 0; y < chromaRows; y++) {
+        memcpy(&planes->chroma[y * chromaRow], uv + (size_t)y * mapped.RowPitch, chromaRow);
+    }
+    m_RenderDeviceContext->Unmap(staging.Get(), 0);
+    capture.screenshotTaken(std::move(planes));
+}
+
 // This function must NOT use any DXGI or ID3D11DeviceContext methods
 // since it can be called on an arbitrary thread!
 void D3D11VARenderer::notifyOverlayUpdated(Overlay::OverlayType type)
@@ -1198,6 +1263,17 @@ bool D3D11VARenderer::createOverlayVertexBuffer(Overlay::OverlayType type, int w
         // Top left
         renderRect.x = 0;
         renderRect.y = m_DisplayHeight - height;
+    }
+    else if (type == Overlay::OverlayGpuVMCapture) {
+        // GpuVM: the picture's top right corner (where the picture is now, beside the panel if it is open), with
+        // the same margin as the pill's height / 2. Y counts from the bottom here.
+        SDL_Rect src = { 0, 0, m_DecoderParams.width, m_DecoderParams.height };
+        SDL_Rect dst = { 0, 0, m_DisplayWidth, m_DisplayHeight };
+        GpuVM::Viewport::applyTarget(&dst);
+        StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+        int margin = height / 2;
+        renderRect.x = (float)(dst.x + dst.w - width - margin);
+        renderRect.y = (float)(m_DisplayHeight - dst.y - height - margin);
     }
 
     renderRect.w = width;

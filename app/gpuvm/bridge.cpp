@@ -49,7 +49,8 @@ bool isValidPipeName(const QString& name)
 // Commands the app may send. Each is checked again where it is handled.
 bool isKnownCommand(const QString& type)
 {
-    static const char* known[] = { "inset", "capture", "fullscreen", "stats", "quit", "focus", "place", "reveal", "show", "hide" };
+    static const char* known[] = { "inset", "capture", "fullscreen", "stats", "quit", "focus", "place", "reveal", "show", "hide",
+                                   "screenshot", "record", "replay-save", "capture-setup" };
     for (const char* k : known) {
         if (type == QLatin1String(k)) {
             return true;
@@ -62,7 +63,7 @@ bool isKnownCommand(const QString& type)
 bool isStateCommand(const QString& type)
 {
     return type == QLatin1String("place") || type == QLatin1String("inset") || type == QLatin1String("capture") ||
-           type == QLatin1String("stats") || type == QLatin1String("focus");
+           type == QLatin1String("stats") || type == QLatin1String("focus") || type == QLatin1String("capture-setup");
 }
 
 // Messages to the app that only report the latest state: dropped first when the app reads too slowly.

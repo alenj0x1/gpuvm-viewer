@@ -170,6 +170,9 @@ private:
         KeyComboToggleKeyboardGrab,
         KeyComboGpuVMPanel, // GpuVM: open or close the side panel
         KeyComboGpuVMHome, // GpuVM: back to the app's Home (the machine stays connected)
+        KeyComboGpuVMScreenshot, // GpuVM: save the picture as PNG
+        KeyComboGpuVMRecord, // GpuVM: start or stop recording
+        KeyComboGpuVMReplay, // GpuVM: save the last seconds (when turned on in the app)
         KeyComboMax
     };
 

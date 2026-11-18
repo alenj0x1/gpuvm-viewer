@@ -27,6 +27,9 @@ public:
     // picture's vertices know when to rebuild them.
     static unsigned generation();
 
+    // Draws the last frame once more even if no new one arrives (a screenshot of a still screen). Main thread.
+    static void requestRedraw();
+
     // True while the area is still moving: renderers keep presenting even if no new frame arrives.
     static bool animating();
 

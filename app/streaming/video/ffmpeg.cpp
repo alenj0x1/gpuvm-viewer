@@ -3,6 +3,7 @@
 #include "utils.h"
 #include "streaming/session.h"
 #include "gpuvm/sessionhooks.h"
+#include "gpuvm/capture.h"
 
 #include <h264_stream.h>
 
@@ -1630,6 +1631,11 @@ bool FFmpegVideoDecoder::initialize(PDECODER_PARAMETERS params)
     // Increase log level until the first frame is decoded
     av_log_set_level(AV_LOG_DEBUG);
 
+    // GpuVM: recordings take the stream's format from here (a change starts a new file)
+    if (!params->testOnly) {
+        GpuVM::Capture::instance().setVideoFormat(params->videoFormat, params->width, params->height, params->frameRate);
+    }
+
     // First try decoders that the user has manually specified via environment variables.
     // These must output surfaces in one of the formats that one of our renderers supports,
     // which is currently:
@@ -2105,6 +2111,9 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
     if (m_FramesIn == 0 && du->frameType != FRAME_TYPE_IDR) {
         return DR_NEED_IDR;
     }
+
+    // GpuVM: the frame as it arrived, for a recording or the last seconds (copied only while one is on)
+    GpuVM::Capture::instance().onVideoFrame(du);
 
     if (!m_LastFrameNumber) {
         m_ActiveWndVideoStats.measurementStartUs = LiGetMicroseconds();

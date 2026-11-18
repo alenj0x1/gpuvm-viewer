@@ -11,6 +11,7 @@ float s_From = 0.0f;
 float s_To = 0.0f;
 Uint32 s_Start = 0;
 int s_Duration = 0;
+unsigned s_Redraws = 0;
 
 void (*s_RedrawListener)(void*) = nullptr;
 void* s_RedrawContext = nullptr;
@@ -83,9 +84,23 @@ unsigned Viewport::generation()
 {
     SDL_AtomicLock(&s_Lock);
     float inset = currentLocked(SDL_GetTicks());
+    unsigned redraws = s_Redraws;
     SDL_AtomicUnlock(&s_Lock);
-    // Quantized to 1/4096 of the width: below a pixel on any real window.
-    return (unsigned)std::lround(inset * 4096.0f);
+    // Quantized to 1/4096 of the width: below a pixel on any real window (at most 2048, so the redraw count fits
+    // above it).
+    return (unsigned)std::lround(inset * 4096.0f) + (redraws << 12);
+}
+
+void Viewport::requestRedraw()
+{
+    SDL_AtomicLock(&s_Lock);
+    s_Redraws++;
+    void (*listener)(void*) = s_RedrawListener;
+    void* context = s_RedrawContext;
+    SDL_AtomicUnlock(&s_Lock);
+    if (listener != nullptr) {
+        listener(context);
+    }
 }
 
 bool Viewport::animating()
