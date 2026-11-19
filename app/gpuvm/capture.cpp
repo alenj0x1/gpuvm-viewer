@@ -324,6 +324,10 @@ namespace {
 // Recomputes what the overlay shows: a notice for a moment, else the recording's time, else nothing. Any thread.
 void refreshOverlay(Capture::Impl* d, bool recording)
 {
+    // With GpuVM the recording's dot and time are the app's (from "recording" on/off): nothing drawn on the picture.
+    if (Bridge::instance().enabled()) {
+        return;
+    }
     QString textNow;
     {
         std::lock_guard<std::mutex> g(d->overlayLock);
@@ -386,6 +390,14 @@ static void ensureOverlayTimer(Capture::Impl* d)
 
 static void showNotice(Capture::Impl* d, const char* key)
 {
+    // With GpuVM, the app shows its status notices itself, in one place over the picture (its status notch): the viewer
+    // only names which one (a fixed key; the app has the texts) and draws nothing.
+    if (Bridge::instance().enabled()) {
+        QJsonObject f;
+        f["key"] = QString::fromLatin1(key);
+        Bridge::instance().send("notice", f);
+        return;
+    }
     QString lang;
     {
         std::lock_guard<std::mutex> g(d->lock);

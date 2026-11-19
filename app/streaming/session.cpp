@@ -2330,17 +2330,21 @@ void Session::exec()
         case SDL_KEYUP:
         case SDL_KEYDOWN:
             presence.runCallbacks();
+            if (event.type == SDL_KEYDOWN) GpuVM::reportInput();
             m_InputHandler->handleKeyEvent(&event.key);
             break;
         case SDL_MOUSEBUTTONDOWN:
         case SDL_MOUSEBUTTONUP:
             presence.runCallbacks();
+            if (event.type == SDL_MOUSEBUTTONDOWN) GpuVM::reportInput();
             m_InputHandler->handleMouseButtonEvent(&event.button);
             break;
         case SDL_MOUSEMOTION:
+            if (event.motion.which != SDL_TOUCH_MOUSEID && (event.motion.xrel != 0 || event.motion.yrel != 0)) GpuVM::reportInput();
             m_InputHandler->handleMouseMotionEvent(&event.motion);
             break;
         case SDL_MOUSEWHEEL:
+            GpuVM::reportInput();
             m_InputHandler->handleMouseWheelEvent(&event.wheel);
             break;
         case SDL_CONTROLLERAXISMOTION:
@@ -2349,6 +2353,7 @@ void Session::exec()
         case SDL_CONTROLLERBUTTONDOWN:
         case SDL_CONTROLLERBUTTONUP:
             presence.runCallbacks();
+            if (event.type == SDL_CONTROLLERBUTTONDOWN) GpuVM::reportInput();
             m_InputHandler->handleControllerButtonEvent(&event.cbutton);
             break;
 #if SDL_VERSION_ATLEAST(2, 0, 14)
@@ -2576,6 +2581,10 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
     }
     else if (type == "replay-save") {
         GpuVM::Capture::instance().saveReplay();
+    }
+    // Take control from an agent: report the person's input over the picture while asked (gpuvm/sessionhooks.h).
+    else if (type == "agent-watch") {
+        GpuVM::setInputWatch(command->value("on").toBool());
     }
     else if (type == "capture-setup") {
         GpuVM::Capture::instance().configure(command->value("replay").toBool(), command->value("seconds").toInt(30),
