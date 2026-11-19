@@ -235,6 +235,30 @@ void reportStats(double receivedFps, double renderedFps, double networkDropPerce
     Bridge::instance().send("stats", f);
 }
 
+static std::atomic<bool> s_WatchInput{false};
+static std::atomic<Uint32> s_LastInput{0};
+
+void setInputWatch(bool on)
+{
+    s_WatchInput = on;
+    s_LastInput = 0;
+}
+
+void reportInput()
+{
+    if (!s_WatchInput.load(std::memory_order_relaxed) || !Bridge::instance().enabled()) {
+        return;
+    }
+    // One message per burst: the app pauses the agent on the first and stops watching.
+    Uint32 now = SDL_GetTicks();
+    Uint32 last = s_LastInput.load(std::memory_order_relaxed);
+    if (last != 0 && now - last < 200) {
+        return;
+    }
+    s_LastInput = now == 0 ? 1 : now;
+    Bridge::instance().send("input");
+}
+
 void reportEnded(const char* reason)
 {
     if (!Bridge::instance().enabled() || s_EndedSent.exchange(true)) {

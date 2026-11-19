@@ -35,4 +35,10 @@ void reportStats(double receivedFps, double renderedFps, double networkDropPerce
 // The session ended: "closed" or "error". Sent once.
 void reportEnded(const char* reason);
 
+// Take control from an agent (GpuVM's agent.rs): while the app asks for it ("agent-watch"), the person's own input
+// over the picture (a key, a click, the wheel, the mouse moving, a controller) is reported as "input", with nothing
+// else: no keys, no positions, at most once every 200 ms. Off, nothing is sent.
+void setInputWatch(bool on);
+void reportInput();
+
 }
