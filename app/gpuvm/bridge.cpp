@@ -114,8 +114,12 @@ QString Bridge::dataDirectory()
 bool Bridge::lowerIntegrity()
 {
 #ifdef Q_OS_WIN32
+    // Read the level first with TOKEN_QUERY only. A stream the app starts is already Low, and its token object was
+    // made by the app at Medium: asking it for TOKEN_ADJUST_DEFAULT (a write) from Low is refused (no write up), so
+    // opening for both at once failed every stream at Low with exit code 3 (369ba86e). Only a run above Low (the
+    // pairing run, at Medium) reopens its token to lower it.
     HANDLE token = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_ADJUST_DEFAULT, &token)) {
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
         return false;
     }
     bool ok = false;
@@ -128,19 +132,25 @@ bool Bridge::lowerIntegrity()
             ok = true;
         }
         else {
-            // S-1-16-4096. A process may always lower its own level (never raise it).
-            SID_IDENTIFIER_AUTHORITY authority = SECURITY_MANDATORY_LABEL_AUTHORITY;
-            PSID low = nullptr;
-            if (AllocateAndInitializeSid(&authority, 1, SECURITY_MANDATORY_LOW_RID, 0, 0, 0, 0, 0, 0, 0, &low)) {
-                TOKEN_MANDATORY_LABEL label = {};
-                label.Label.Sid = low;
-                label.Label.Attributes = SE_GROUP_INTEGRITY;
-                ok = SetTokenInformation(token, TokenIntegrityLevel, &label, sizeof(label) + GetLengthSid(low)) != FALSE;
-                FreeSid(low);
+            CloseHandle(token);
+            token = nullptr;
+            if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_ADJUST_DEFAULT, &token)) {
+                // S-1-16-4096. A process may always lower its own level (never raise it).
+                SID_IDENTIFIER_AUTHORITY authority = SECURITY_MANDATORY_LABEL_AUTHORITY;
+                PSID low = nullptr;
+                if (AllocateAndInitializeSid(&authority, 1, SECURITY_MANDATORY_LOW_RID, 0, 0, 0, 0, 0, 0, 0, &low)) {
+                    TOKEN_MANDATORY_LABEL label = {};
+                    label.Label.Sid = low;
+                    label.Label.Attributes = SE_GROUP_INTEGRITY;
+                    ok = SetTokenInformation(token, TokenIntegrityLevel, &label, sizeof(label) + GetLengthSid(low)) != FALSE;
+                    FreeSid(low);
+                }
             }
         }
     }
-    CloseHandle(token);
+    if (token) {
+        CloseHandle(token);
+    }
     return ok;
 #else
     return true;
