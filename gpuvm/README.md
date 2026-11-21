@@ -13,6 +13,8 @@ GpuVM's own code lives in `app/gpuvm/`; upstream files only call it, a few lines
 | `app/gpuvm/bridge.*` | The private pipe to the GpuVM app (client side, token from the environment, fixed message list). |
 | `app/gpuvm/viewport.*` | The picture's area: the side panel takes the right part of the window and the picture slides aside. |
 | `app/gpuvm/sessionhooks.*` | Stages, errors, window, first picture and stats sent to the app. |
+| `app/gpuvm/capture.*`, `mp4writer.*`, `recordfile.*`, `aacencoder.*`, `audiotrack.*` | Screenshots, recordings and the last seconds, written as MP4 by our own writer (the stream as it comes, sound as AAC). |
+| `app/gpuvm/transcoder.*` | Light recordings of an agent's work (`record` with `light`): the stream decoded on the GPU, one frame every 1/30 s re-encoded as H.264 at constant quality by Windows' encoder on the CPU, 10-35x smaller (GpuVM lab 061). |
 | `app/main.cpp`, `app/path.*` | Own settings and pairing identity, logs and caches, all under `%USERPROFILE%\AppData\LocalLow\GpuVM\Viewer` when GpuVM runs it (it streams at Low integrity); bridge start and stop; hidden Qt window. |
 | `app/streaming/session.*` | Bridge hooks, commands from the app, window title. |
 | `app/streaming/input/*` | Ctrl+Alt+Shift+G opens the panel; mouse and touch follow the picture's area. |

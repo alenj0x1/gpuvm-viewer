@@ -2577,7 +2577,8 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
         GpuVM::Capture::instance().screenshot();
     }
     else if (type == "record") {
-        GpuVM::Capture::instance().setRecording(command->value("on").toBool());
+        // "light": a recording of an agent's work, re-encoded small (gpuvm/transcoder.h); the person's own are not.
+        GpuVM::Capture::instance().setRecording(command->value("on").toBool(), command->value("light").toBool());
     }
     else if (type == "replay-save") {
         GpuVM::Capture::instance().saveReplay();

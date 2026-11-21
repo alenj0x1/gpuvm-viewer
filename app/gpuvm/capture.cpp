@@ -4,6 +4,7 @@
 
 #include "capture.h"
 #include "recordfile.h"
+#include "transcoder.h"
 #include "bridge.h"
 #include "mp4writer.h"
 #include "viewport.h"
@@ -262,6 +263,7 @@ struct Capture::Impl {
 
     // The stream (lock).
     Mp4VideoInfo video;
+    int videoFormat = 0;  // Limelight's VIDEO_FORMAT_* (bit depth, chroma)
     bool haveVideo = false;
     Mp4AudioInfo opus;
     bool haveAudio = false;
@@ -425,7 +427,9 @@ void Capture::setVideoFormat(int videoFormat, int width, int height, int)
     bool changed;
     {
         std::lock_guard<std::mutex> g(d->lock);
-        changed = d->haveVideo && (d->video.codec != v.codec || d->video.width != v.width || d->video.height != v.height);
+        changed = d->haveVideo && (d->video.codec != v.codec || d->video.width != v.width || d->video.height != v.height ||
+                                   d->videoFormat != videoFormat);
+        d->videoFormat = videoFormat;
         // Color is set from the frames themselves (onVideoFrame).
         v.primaries = d->video.primaries;
         v.transfer = d->video.transfer;
@@ -620,22 +624,50 @@ namespace {
 class FileOut
 {
 public:
-    bool open(const Mp4VideoInfo& video, const Mp4AudioInfo* opus, const char* prefix)
+    // light: the picture re-encoded small (an agent's work, transcoder.h), when the stream's format allows it and
+    // the decoder and encoder open; otherwise the stream as it comes.
+    bool open(const Mp4VideoInfo& video, const Mp4AudioInfo* opus, const char* prefix, bool light = false, int videoFormat = 0)
     {
         m_Name = newName(prefix, "mp4");
         m_Part = capturesDir() + "/" + m_Name + ".part";
         m_Video = video;
-        return m_File.open(QDir::toNativeSeparators(m_Part).toStdWString(), video, opus);
+        Mp4VideoInfo written = video;
+        if (light && Transcoder::supported(videoFormat)) {
+            m_Light = std::make_unique<Transcoder>();
+            if (m_Light->open(video.codec, video.width, video.height, Transcoder::Settings())) {
+                written.codec = VideoCodec::H264;
+            }
+            else {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "GpuVM capture: light recording unavailable (%s), recording the stream as it comes",
+                            m_Light->error().c_str());
+                m_Light.reset();
+            }
+        }
+        return m_File.open(QDir::toNativeSeparators(m_Part).toStdWString(), written, opus);
     }
     bool add(const Packet& p)
     {
-        return p.video ? m_File.addVideo(p.data->data(), p.data->size(), p.timeUs, p.key)
-                       : m_File.addAudio(p.data->data(), p.data->size(), p.timeUs);
+        if (!p.video) {
+            return m_File.addAudio(p.data->data(), p.data->size(), p.timeUs);
+        }
+        if (!m_Light) {
+            return m_File.addVideo(p.data->data(), p.data->size(), p.timeUs, p.key);
+        }
+        if (!m_Light->push(p.data->data(), p.data->size(), p.timeUs, p.key, m_Encoded)) {
+            return false;
+        }
+        return writeEncoded();
     }
     // Finishes the file and announces it (with a small picture for the panel); false (and nothing announced) if it
     // failed or had no picture.
     bool finish(const char* kind, const QString& thumb)
     {
+        if (m_Light) {
+            m_Light->drain(m_Encoded);
+            writeEncoded();
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM capture: %s", m_Light->summary().c_str());
+            m_Light.reset();
+        }
         bool started = m_File.started();
         bool ok = m_File.close() && started;
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM capture: %s %s", kind, m_File.summary().c_str());
@@ -653,14 +685,26 @@ public:
     }
 
 private:
+    bool writeEncoded()
+    {
+        bool ok = true;
+        for (const EncodedFrame& f : m_Encoded) {
+            ok = ok && m_File.addVideo(f.data.data(), f.data.size(), f.timeUs, f.key);
+        }
+        m_Encoded.clear();
+        return ok;
+    }
+
     RecordFile m_File;
     Mp4VideoInfo m_Video;
     QString m_Name, m_Part;
+    std::unique_ptr<Transcoder> m_Light;
+    std::vector<EncodedFrame> m_Encoded;
 };
 
 }
 
-void Capture::setRecording(bool on)
+void Capture::setRecording(bool on, bool light)
 {
     Impl* d = impl();
     if (!Bridge::instance().enabled()) {
@@ -690,6 +734,7 @@ void Capture::setRecording(bool on)
     Mp4VideoInfo video;
     Mp4AudioInfo opus;
     bool haveAudio;
+    int videoFormat;
     {
         std::lock_guard<std::mutex> g(d->lock);
         if (!d->haveVideo) {
@@ -699,6 +744,7 @@ void Capture::setRecording(bool on)
         video = d->video;
         opus = d->opus;
         haveAudio = d->haveAudio;
+        videoFormat = d->videoFormat;
     }
     QDir().mkpath(capturesDir());
     if (freeBytes(capturesDir()) < kMinFreeToStart) {
@@ -724,9 +770,15 @@ void Capture::setRecording(bool on)
     m_ThumbWanted = true;
     Viewport::requestRedraw();
 
-    d->recorder = std::thread([d, video, opus, haveAudio]() {
+    d->recorder = std::thread([d, video, opus, haveAudio, videoFormat, light]() {
+#ifdef Q_OS_WIN32
+        if (light) {
+            // Decoding and encoding again never take the CPU from the live picture's threads.
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+        }
+#endif
         auto out = std::make_unique<FileOut>();
-        bool ok = out->open(video, haveAudio ? &opus : nullptr, "clip");
+        bool ok = out->open(video, haveAudio ? &opus : nullptr, "clip", light, videoFormat);
         const char* failure = ok ? nullptr : "write";
         Uint32 lastSpaceCheck = SDL_GetTicks();
         for (;;) {
@@ -749,14 +801,16 @@ void Capture::setRecording(bool on)
                     Mp4VideoInfo next;
                     Mp4AudioInfo nextOpus;
                     bool nextAudio;
+                    int nextFormat;
                     {
                         std::lock_guard<std::mutex> g(d->lock);
                         next = d->video;
                         nextOpus = d->opus;
                         nextAudio = d->haveAudio;
+                        nextFormat = d->videoFormat;
                     }
                     out = std::make_unique<FileOut>();
-                    if (!out->open(next, nextAudio ? &nextOpus : nullptr, "clip")) failure = "write";
+                    if (!out->open(next, nextAudio ? &nextOpus : nullptr, "clip", light, nextFormat)) failure = "write";
                     continue;
                 }
                 if (!out->add(p)) {
@@ -798,6 +852,7 @@ void Capture::setRecording(bool on)
 
     QJsonObject f;
     f["on"] = true;
+    f["light"] = light;
     Bridge::instance().send("recording", f);
     refreshOverlay(d, true);
     ensureOverlayTimer(d);

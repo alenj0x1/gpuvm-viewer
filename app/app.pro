@@ -173,6 +173,7 @@ SOURCES += \
     gpuvm/mp4writer.cpp \
     gpuvm/recordfile.cpp \
     gpuvm/sessionhooks.cpp \
+    gpuvm/transcoder.cpp \
     gpuvm/viewport.cpp \
     backend/nvaddress.cpp \
     backend/nvapp.cpp \
@@ -222,6 +223,7 @@ HEADERS += \
     gpuvm/mp4writer.h \
     gpuvm/recordfile.h \
     gpuvm/sessionhooks.h \
+    gpuvm/transcoder.h \
     gpuvm/viewport.h \
     SDL_compat.h \
     backend/nvaddress.h \

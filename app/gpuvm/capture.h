@@ -4,7 +4,7 @@
 //   viewer's overlays) is copied by the renderer and saved as PNG on a worker thread.
 // - Recording: the stream's own H.264/HEVC/AV1 is written to MP4 as it arrives (mp4writer.h), no re-encoding; the
 //   sound goes in as AAC (audiotrack.h). It starts at a key frame (one is asked for) and a new file starts if the
-//   stream's format changes.
+//   stream's format changes. A light recording (an agent's work) is re-encoded small on the way (transcoder.h).
 // - Replay: when turned on, the last seconds of packets stay in memory (from a key frame on, capped), and can be
 //   saved as a clip.
 //
@@ -54,7 +54,9 @@ public:
 
     // Commands (main thread): from the app's panel and from the viewer's keys.
     void screenshot();
-    void setRecording(bool on);
+    // light: re-encoded at 30 fps and a desktop's bitrate (transcoder.h), for the recordings GpuVM keeps of agents'
+    // work; the person's own recordings keep the stream as it comes.
+    void setRecording(bool on, bool light = false);
     void toggleRecording() { setRecording(!m_Recording.load()); }
     void saveReplay();
     // The app's settings: replay on or off, its length, and the language of the short notices over the picture.
