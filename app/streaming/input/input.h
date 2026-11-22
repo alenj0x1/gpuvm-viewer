@@ -146,6 +146,9 @@ public:
 
     void setCaptureActive(bool active);
 
+    // GpuVM: while an agent holds the machine the person's cursor stays free over the picture.
+    void setAgentMouse(bool on);
+
     bool isMouseInVideoRegion(int mouseX, int mouseY, int windowWidth = -1, int windowHeight = -1);
 
     void updateKeyboardGrabState();
@@ -246,6 +249,8 @@ private:
     int m_StreamWidth;
     int m_StreamHeight;
     bool m_AbsoluteMouseMode;
+    bool m_AgentMouse = false;
+    bool m_MouseModeBeforeAgent = false;
     bool m_AbsoluteTouchMode;
     bool m_DisabledTouchFeedback;
 

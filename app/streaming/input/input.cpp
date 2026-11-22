@@ -381,13 +381,33 @@ bool SdlInputHandler::isSystemKeyCaptureActive()
     return true;
 }
 
+void SdlInputHandler::setAgentMouse(bool on)
+{
+    if (on == m_AgentMouse) {
+        return;
+    }
+    m_AgentMouse = on;
+    if (on) {
+        m_MouseModeBeforeAgent = m_AbsoluteMouseMode;
+    }
+    bool want = on ? true : m_MouseModeBeforeAgent;
+    bool active = isCaptureActive();
+    if (active) {
+        setCaptureActive(false);
+    }
+    m_AbsoluteMouseMode = want;
+    if (active) {
+        setCaptureActive(true);
+    }
+}
+
 void SdlInputHandler::setCaptureActive(bool active)
 {
     if (active) {
         // If we're in relative mode, try to activate SDL's relative mouse mode
         if (m_AbsoluteMouseMode || SDL_SetRelativeMouseMode(SDL_TRUE) < 0) {
             // Relative mouse mode didn't work or was disabled, so we'll just hide the cursor
-            SDL_ShowCursor(m_MouseCursorCapturedVisibilityState);
+            SDL_ShowCursor(m_AgentMouse ? SDL_ENABLE : m_MouseCursorCapturedVisibilityState);
             m_FakeMouseCaptureActive = true;
         }
 
