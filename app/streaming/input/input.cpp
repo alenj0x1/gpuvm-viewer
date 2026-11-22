@@ -156,6 +156,11 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboGpuVMReplay].scanCode = SDL_SCANCODE_B;
     m_SpecialKeyCombos[KeyComboGpuVMReplay].enabled = GpuVM::Bridge::instance().enabled();
 
+    m_SpecialKeyCombos[KeyComboGpuVMAgent].keyCombo = KeyComboGpuVMAgent;
+    m_SpecialKeyCombos[KeyComboGpuVMAgent].keyCode = SDLK_a;
+    m_SpecialKeyCombos[KeyComboGpuVMAgent].scanCode = SDL_SCANCODE_A;
+    m_SpecialKeyCombos[KeyComboGpuVMAgent].enabled = GpuVM::Bridge::instance().enabled();
+
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].keyCombo = KeyComboToggleKeyboardGrab;
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].keyCode = SDLK_k;
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].scanCode = SDL_SCANCODE_K;

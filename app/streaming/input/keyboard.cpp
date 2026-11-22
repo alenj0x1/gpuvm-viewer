@@ -194,6 +194,12 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         GpuVM::Capture::instance().saveReplay();
         break;
 
+    case KeyComboGpuVMAgent:
+        // The app gives the machine back to its agent, if the person has it (agent.rs); otherwise nothing happens.
+        GpuVM::Bridge::instance().send("agent-resume");
+        raiseAllKeys();
+        break;
+
     case KeyComboToggleKeyboardGrab:
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                     "Detected keyboard grab toggle combo");

@@ -39,7 +39,8 @@ void reportEnded(const char* reason);
 // Their input over the picture is not sent to the machine (the agent's cursor and keys are left alone); a deliberate
 // one - a click or a tap, or with the window focused a key, the wheel or a controller button - is reported as "input" (nothing
 // else: no keys, no positions) and is itself swallowed: it takes control, it doesn't act. Moving the mouse over the
-// picture never counts (2026-11-21: crossing the viewer on the way to another window paused the agent). Releases
+// picture never counts (2026-11-21: crossing the viewer on the way to another window paused the agent), nor do the
+// viewer's own shortcuts or a modifier pressed alone; Ctrl+Alt+Shift+A gives the machine back ("agent-resume"). Releases
 // (key up, button up) always go through, so nothing stays held down in the machine. Reporting
 // turns watching off here at once, so the person's next input reaches the machine whatever the app decides.
 void setInputWatch(bool on);

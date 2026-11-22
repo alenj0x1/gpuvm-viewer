@@ -173,6 +173,7 @@ private:
         KeyComboGpuVMScreenshot, // GpuVM: save the picture as PNG
         KeyComboGpuVMRecord, // GpuVM: start or stop recording
         KeyComboGpuVMReplay, // GpuVM: save the last seconds (when turned on in the app)
+        KeyComboGpuVMAgent, // GpuVM: give the machine back to the agent after taking control
         KeyComboMax
     };
 

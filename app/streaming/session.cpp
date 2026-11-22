@@ -2331,8 +2331,19 @@ void Session::exec()
         case SDL_KEYDOWN:
             presence.runCallbacks();
             // Releases always go through: a key held when watching started must not stay down in the machine.
+            // The viewer's own shortcuts (Ctrl+Alt+Shift+...) work while watching and never take control, and neither does
+            // a modifier pressed on its own (the first key of a shortcut): 2026-11-21, Ctrl+Alt+Shift+Z took control.
             if (event.type == SDL_KEYDOWN && GpuVM::watchingInput()) {
-                if (SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
+                const SDL_Keycode sym = event.key.keysym.sym;
+                const Uint16 mod = event.key.keysym.mod;
+                const bool modifier = sym == SDLK_LCTRL || sym == SDLK_RCTRL || sym == SDLK_LSHIFT || sym == SDLK_RSHIFT ||
+                                      sym == SDLK_LALT || sym == SDLK_RALT || sym == SDLK_LGUI || sym == SDLK_RGUI;
+                const bool shortcut = (mod & KMOD_CTRL) && (mod & KMOD_ALT) && (mod & KMOD_SHIFT);
+                if (shortcut) {
+                    m_InputHandler->handleKeyEvent(&event.key);
+                    break;
+                }
+                if (!modifier && SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
                 break;
             }
             m_InputHandler->handleKeyEvent(&event.key);
