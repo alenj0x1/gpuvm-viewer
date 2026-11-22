@@ -243,7 +243,9 @@ static std::atomic<bool> s_WatchInput{false};
 
 void setInputWatch(bool on)
 {
-    s_WatchInput = on;
+    if (s_WatchInput.exchange(on) != on) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM: watching input %s", on ? "on" : "off");
+    }
 }
 
 bool watchingInput()
@@ -281,6 +283,7 @@ void reportInput()
     if (!s_WatchInput.exchange(false) || !Bridge::instance().enabled()) {
         return;
     }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM: input reported (take control)");
     Bridge::instance().send("input");
 }
 
