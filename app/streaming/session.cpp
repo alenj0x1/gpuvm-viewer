@@ -2330,8 +2330,9 @@ void Session::exec()
         case SDL_KEYUP:
         case SDL_KEYDOWN:
             presence.runCallbacks();
-            if (GpuVM::watchingInput()) {
-                if (event.type == SDL_KEYDOWN && SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
+            // Releases always go through: a key held when watching started must not stay down in the machine.
+            if (event.type == SDL_KEYDOWN && GpuVM::watchingInput()) {
+                if (SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
                 break;
             }
             m_InputHandler->handleKeyEvent(&event.key);
@@ -2339,8 +2340,9 @@ void Session::exec()
         case SDL_MOUSEBUTTONDOWN:
         case SDL_MOUSEBUTTONUP:
             presence.runCallbacks();
-            if (GpuVM::watchingInput()) {
-                if (event.type == SDL_MOUSEBUTTONDOWN && event.button.which != SDL_TOUCH_MOUSEID) GpuVM::reportInput();
+            if (event.type == SDL_MOUSEBUTTONDOWN && GpuVM::watchingInput()) {
+                // A tap is reported by its finger event (below).
+                if (event.button.which != SDL_TOUCH_MOUSEID) GpuVM::reportInput();
                 break;
             }
             m_InputHandler->handleMouseButtonEvent(&event.button);
@@ -2367,8 +2369,8 @@ void Session::exec()
         case SDL_CONTROLLERBUTTONDOWN:
         case SDL_CONTROLLERBUTTONUP:
             presence.runCallbacks();
-            if (GpuVM::watchingInput()) {
-                if (event.type == SDL_CONTROLLERBUTTONDOWN && SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
+            if (event.type == SDL_CONTROLLERBUTTONDOWN && GpuVM::watchingInput()) {
+                if (SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
                 break;
             }
             m_InputHandler->handleControllerButtonEvent(&event.cbutton);
@@ -2398,6 +2400,11 @@ void Session::exec()
         case SDL_FINGERDOWN:
         case SDL_FINGERMOTION:
         case SDL_FINGERUP:
+            // A tap on the picture takes control like a click; while watching, touches don't reach the machine.
+            if (event.type != SDL_FINGERUP && GpuVM::watchingInput()) {
+                if (event.type == SDL_FINGERDOWN) GpuVM::reportInput();
+                break;
+            }
             m_InputHandler->handleTouchFingerEvent(&event.tfinger);
             break;
         case SDL_DISPLAYEVENT:
