@@ -2330,30 +2330,47 @@ void Session::exec()
         case SDL_KEYUP:
         case SDL_KEYDOWN:
             presence.runCallbacks();
-            if (event.type == SDL_KEYDOWN) GpuVM::reportInput();
+            if (GpuVM::watchingInput()) {
+                if (event.type == SDL_KEYDOWN && SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
+                break;
+            }
             m_InputHandler->handleKeyEvent(&event.key);
             break;
         case SDL_MOUSEBUTTONDOWN:
         case SDL_MOUSEBUTTONUP:
             presence.runCallbacks();
-            if (event.type == SDL_MOUSEBUTTONDOWN) GpuVM::reportInput();
+            if (GpuVM::watchingInput()) {
+                if (event.type == SDL_MOUSEBUTTONDOWN && event.button.which != SDL_TOUCH_MOUSEID) GpuVM::reportInput();
+                break;
+            }
             m_InputHandler->handleMouseButtonEvent(&event.button);
             break;
         case SDL_MOUSEMOTION:
-            if (event.motion.which != SDL_TOUCH_MOUSEID && (event.motion.xrel != 0 || event.motion.yrel != 0)) GpuVM::reportInput();
+            if (GpuVM::watchingInput()) {
+                break;
+            }
             m_InputHandler->handleMouseMotionEvent(&event.motion);
             break;
         case SDL_MOUSEWHEEL:
-            GpuVM::reportInput();
+            if (GpuVM::watchingInput()) {
+                if (SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
+                break;
+            }
             m_InputHandler->handleMouseWheelEvent(&event.wheel);
             break;
         case SDL_CONTROLLERAXISMOTION:
+            if (GpuVM::watchingInput()) {
+                break;
+            }
             m_InputHandler->handleControllerAxisEvent(&event.caxis);
             break;
         case SDL_CONTROLLERBUTTONDOWN:
         case SDL_CONTROLLERBUTTONUP:
             presence.runCallbacks();
-            if (event.type == SDL_CONTROLLERBUTTONDOWN) GpuVM::reportInput();
+            if (GpuVM::watchingInput()) {
+                if (event.type == SDL_CONTROLLERBUTTONDOWN && SDL_GetKeyboardFocus() == m_Window) GpuVM::reportInput();
+                break;
+            }
             m_InputHandler->handleControllerButtonEvent(&event.cbutton);
             break;
 #if SDL_VERSION_ATLEAST(2, 0, 14)
