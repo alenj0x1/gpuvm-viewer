@@ -3,6 +3,8 @@
 
 #include "streaming/session.h"
 
+#include <Limelight.h>
+
 #include <QCoreApplication>
 #include <QJsonObject>
 #include <atomic>
@@ -53,6 +55,8 @@ void attachSession(Session* session)
         Bridge::instance().send("stage-failed", f);
     });
     QObject::connect(session, &Session::connectionStarted, [] {
+        // Sunshine keeps the cursor setting between sessions: one left hidden by an agent session comes back.
+        setHostCursor(true);
         Bridge::instance().send("connected");
     });
     QObject::connect(session, &Session::displayLaunchError, [](QString text) {
@@ -245,6 +249,30 @@ void setInputWatch(bool on)
 bool watchingInput()
 {
     return s_WatchInput.load(std::memory_order_relaxed) && Bridge::instance().enabled();
+}
+
+// Sunshine's Ctrl+Alt+Shift+F14 / F15 (GpuVM's fork): hide or show the machine's cursor in the picture. Older hosts
+// pass F14/F15 to the machine, which ignores them.
+void setHostCursor(bool visible)
+{
+    if (!Bridge::instance().enabled()) {
+        return;
+    }
+    const short mods[] = { 0xA2, 0xA4, 0xA0 }; // left Ctrl, Alt, Shift
+    const char all = MODIFIER_CTRL | MODIFIER_ALT | MODIFIER_SHIFT;
+    char held = 0;
+    const char bits[] = { MODIFIER_CTRL, MODIFIER_ALT, MODIFIER_SHIFT };
+    for (int i = 0; i < 3; i++) {
+        held |= bits[i];
+        LiSendKeyboardEvent(0x8000 | mods[i], KEY_ACTION_DOWN, held);
+    }
+    short key = 0x8000 | (visible ? 0x7E : 0x7D);
+    LiSendKeyboardEvent(key, KEY_ACTION_DOWN, all);
+    LiSendKeyboardEvent(key, KEY_ACTION_UP, all);
+    for (int i = 2; i >= 0; i--) {
+        held &= ~bits[i];
+        LiSendKeyboardEvent(0x8000 | mods[i], KEY_ACTION_UP, held);
+    }
 }
 
 void reportInput()

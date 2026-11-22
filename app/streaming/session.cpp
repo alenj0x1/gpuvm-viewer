@@ -2620,7 +2620,9 @@ bool Session::handleGpuVMCommand(QJsonObject* command)
     }
     // Take control from an agent: report the person's input over the picture while asked (gpuvm/sessionhooks.h).
     else if (type == "agent-watch") {
-        GpuVM::setInputWatch(command->value("on").toBool());
+        bool on = command->value("on").toBool();
+        GpuVM::setInputWatch(on);
+        GpuVM::setHostCursor(!on);
     }
     else if (type == "capture-setup") {
         GpuVM::Capture::instance().configure(command->value("replay").toBool(), command->value("seconds").toInt(30),

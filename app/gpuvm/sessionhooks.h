@@ -44,6 +44,7 @@ void reportEnded(const char* reason);
 // (key up, button up) always go through, so nothing stays held down in the machine. Reporting
 // turns watching off here at once, so the person's next input reaches the machine whatever the app decides.
 void setInputWatch(bool on);
+void setHostCursor(bool visible);
 bool watchingInput();
 void reportInput();
 
