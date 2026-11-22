@@ -2131,12 +2131,6 @@ void Session::exec()
                     m_AudioMuted = false;
                 }
                 m_InputHandler->notifyFocusGained();
-#ifdef Q_OS_WIN32
-                // The click that activates the window doesn't reach SDL: while watching, it is the person taking control.
-                if (GpuVM::watchingInput() && ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON) | GetAsyncKeyState(VK_MBUTTON)) & 0x8000)) {
-                    GpuVM::reportInput();
-                }
-#endif
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();

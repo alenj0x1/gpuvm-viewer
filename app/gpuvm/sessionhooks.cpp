@@ -241,8 +241,28 @@ void reportStats(double receivedFps, double renderedFps, double networkDropPerce
 
 static std::atomic<bool> s_WatchInput{false};
 
+#ifdef Q_OS_WIN32
+// SDL drops the click that activates an unfocused window; the posted button message still passes here first.
+static void SDLCALL watchClicks(void*, void* hwnd, unsigned int message, Uint64, Sint64)
+{
+    if ((message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN) && watchingInput()) {
+        wchar_t cls[16] = {};
+        GetClassNameW((HWND)hwnd, cls, 16);
+        if (wcscmp(cls, L"SDL_app") == 0) {
+            reportInput();
+        }
+    }
+}
+#endif
+
 void setInputWatch(bool on)
 {
+#ifdef Q_OS_WIN32
+    static std::atomic<bool> hooked{false};
+    if (on && !hooked.exchange(true)) {
+        SDL_SetWindowsMessageHook(watchClicks, nullptr);
+    }
+#endif
     if (s_WatchInput.exchange(on) != on) {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GpuVM: watching input %s", on ? "on" : "off");
     }
